@@ -1,0 +1,585 @@
+CREATE SCHEMA IF NOT EXISTS clinica;
+
+-- Habilitar extensión requerida para la restricción de exclusión
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+CREATE TABLE clinica."tPaciente" (
+    id_paciente INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_doctor INT NOT NULL REFERENCES usuario."tUsuario"(id_usuario) ON DELETE RESTRICT,
+    
+    -- Información básica
+    nombre VARCHAR(60) NOT NULL,
+    apellido_paterno VARCHAR(60),
+    apellido_materno VARCHAR(60),
+    fecha_nacimiento DATE,
+    sexo CHAR(1) CHECK (sexo IN ('M','F', 'O')),
+    correo_electronico VARCHAR(150),
+    telefono_principal VARCHAR(15) NOT NULL,
+    telefono_secundario VARCHAR(15),
+    
+    -- Dirección
+    calle VARCHAR(100),
+    numero_exterior VARCHAR(10),
+    numero_interior VARCHAR(10),
+    colonia VARCHAR(80),
+    ciudad VARCHAR(80),
+    estado VARCHAR(50),
+    codigo_postal VARCHAR(10),
+    pais VARCHAR(50) DEFAULT 'México',
+    
+    -- Contacto de emergencia
+    contacto_emergencia_nombre VARCHAR(120),
+    contacto_emergencia_parentesco VARCHAR(50),
+    contacto_emergencia_telefono VARCHAR(15),
+    
+    -- Ocupación y referido
+    ocupacion VARCHAR(100),
+    referido_por VARCHAR(100),
+    
+    -- Control
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP,
+    activo BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE clinica."tHistoriaMedica" (
+    id_historia_medica INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_paciente INT NOT NULL REFERENCES clinica."tPaciente"(id_paciente) ON DELETE CASCADE,
+    
+    -- Condiciones médicas (booleanas para las más comunes)
+    diabetes BOOLEAN DEFAULT FALSE,
+    hipertension BOOLEAN DEFAULT FALSE,
+    cardiopatia BOOLEAN DEFAULT FALSE,
+    epilepsia BOOLEAN DEFAULT FALSE,
+    hepatitis BOOLEAN DEFAULT FALSE,
+    vih BOOLEAN DEFAULT FALSE,
+    tuberculosis BOOLEAN DEFAULT FALSE,
+    asma BOOLEAN DEFAULT FALSE,
+    alergias_medicamentos BOOLEAN DEFAULT FALSE,
+    alergias_anestesicos BOOLEAN DEFAULT FALSE,
+    embarazo BOOLEAN DEFAULT FALSE,
+    
+    -- Detalles adicionales
+    otras_enfermedades TEXT,
+    medicamentos_actuales TEXT,
+    alergias_detalle TEXT,
+    cirugias_previas TEXT,
+    hospitalizaciones TEXT,
+    transfusiones BOOLEAN DEFAULT FALSE,
+    fuma VARCHAR(50),
+    alcohol VARCHAR(50),
+    drogas BOOLEAN DEFAULT FALSE,
+    
+    -- Fecha de última actualización
+    fecha_actualizacion TIMESTAMP DEFAULT NOW(),
+    
+    UNIQUE(id_paciente)
+);
+
+CREATE TABLE clinica."tHistoriaDental" (
+    id_historia_dental INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_paciente INT NOT NULL REFERENCES clinica."tPaciente"(id_paciente) ON DELETE CASCADE,
+    
+    -- Motivo de consulta principal
+    motivo_consulta TEXT,
+    
+    -- Hábitos
+    cepillado_frecuencia VARCHAR(50), -- '1 vez', '2 veces', '3 o más'
+    usa_hilo_dental BOOLEAN DEFAULT FALSE,
+    usa_enjuague BOOLEAN DEFAULT FALSE,
+    bruxismo BOOLEAN DEFAULT FALSE,
+    muerde_unas BOOLEAN DEFAULT FALSE,
+    respiracion_bucal BOOLEAN DEFAULT FALSE,
+    
+    -- Antecedentes de tratamientos
+    tratamiento_ortodoncia BOOLEAN DEFAULT FALSE,
+    cirugia_oral BOOLEAN DEFAULT FALSE,
+    extracciones_previas TEXT,
+    sensibilidad_dental BOOLEAN DEFAULT FALSE,
+    sangrado_encias BOOLEAN DEFAULT FALSE,
+    dolor_articulacion BOOLEAN DEFAULT FALSE,
+    
+    -- Última visita al dentista
+    ultima_visita DATE,
+    
+    fecha_actualizacion TIMESTAMP DEFAULT NOW(),
+    
+    UNIQUE(id_paciente)
+);
+
+CREATE TABLE clinica."tTratamiento" (
+    id_tratamiento INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_doctor INT NOT NULL REFERENCES usuario."tUsuario"(id_usuario) ON DELETE CASCADE,
+    
+    codigo VARCHAR(50), -- Código interno o de nomenclatura dental
+    nombre VARCHAR(50) NOT NULL,
+    descripcion TEXT,
+    costo_sugerido DECIMAL(10,2),
+    duracion_minutos INT,
+    color VARCHAR(7), -- Para representación visual en agenda (#RRGGBB)
+    activo BOOLEAN DEFAULT TRUE,
+    requiere_odontograma BOOLEAN DEFAULT FALSE,
+    
+    UNIQUE(id_doctor, codigo)
+);
+
+CREATE TABLE clinica."tCita" (
+    id_cita INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_paciente INT NOT NULL REFERENCES clinica."tPaciente"(id_paciente) ON DELETE CASCADE,
+    id_doctor INT NOT NULL REFERENCES usuario."tUsuario"(id_usuario) ON DELETE CASCADE,
+    id_tratamiento INT REFERENCES clinica."tTratamiento"(id_tratamiento) ON DELETE SET NULL,
+
+    fecha_hora_inicio TIMESTAMP NOT NULL,
+    fecha_hora_fin TIMESTAMP NOT NULL,
+    
+    estado VARCHAR(20) DEFAULT 'programada' CHECK (estado IN ('programada', 'confirmada', 'en_curso', 'completada', 'cancelada', 'no_asistio')),
+    tipo_cita VARCHAR(30), -- 'primera_vez', 'revision', 'tratamiento', 'urgencia'
+    notas TEXT,
+    color VARCHAR(7), -- Color personalizado para la cita
+    
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP,
+    
+    CONSTRAINT check_horario CHECK (fecha_hora_fin > fecha_hora_inicio)
+);
+
+CREATE TABLE clinica."tTratamientoRealizado" (
+    id_tratamiento_realizado INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_paciente INT NOT NULL REFERENCES clinica."tPaciente"(id_paciente) ON DELETE CASCADE,
+    id_doctor INT NOT NULL REFERENCES usuario."tUsuario"(id_usuario) ON DELETE CASCADE,
+    id_tratamiento INT REFERENCES clinica."tTratamiento"(id_tratamiento) ON DELETE SET NULL,
+    id_cita INT REFERENCES clinica."tCita"(id_cita) ON DELETE SET NULL,
+    
+    fecha_tratamiento DATE DEFAULT CURRENT_DATE,
+    diente VARCHAR(5), -- Notación FDI (11, 21, 36, etc.) o múltiples separadas por coma
+    caras VARCHAR(20), -- Caras tratadas: O, M, D, V, L/P, I
+    diagnostico TEXT,
+    procedimiento_realizado TEXT,
+    observaciones TEXT,
+    costo_cobrado DECIMAL(10,2),
+    
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE clinica."tOdontograma" (
+    id_odontograma INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_paciente INT NOT NULL REFERENCES clinica."tPaciente"(id_paciente) ON DELETE CASCADE,
+    
+    diente VARCHAR(3) NOT NULL, -- Notación FDI de dos dígitos (ej. '11', '36')
+    estado VARCHAR(30), -- 'sano', 'caries', 'obturacion', 'corona', 'ausente', 'endodoncia', 'implante', etc.
+    superficie JSONB, -- Detalle por cara: {"O":"caries", "M":"obturacion", "D":"sano"}
+    notas TEXT,
+    notacion VARCHAR(9) CHECK (notacion IN ('FDI', 'UNIVERSAL', 'PALMER', 'HADERUP')) DEFAULT 'FDI',
+    fecha_actualizacion TIMESTAMP DEFAULT NOW(),
+    
+    CONSTRAINT uq_odontograma_paciente_diente_notacion UNIQUE (id_paciente, diente, notacion)
+);
+
+CREATE TABLE clinica."tNotaClinica" (
+    id_nota INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_paciente INT NOT NULL REFERENCES clinica."tPaciente"(id_paciente) ON DELETE CASCADE,
+    id_doctor INT NOT NULL REFERENCES usuario."tUsuario"(id_usuario) ON DELETE CASCADE,
+    id_cita INT REFERENCES clinica."tCita"(id_cita) ON DELETE SET NULL,
+    
+    fecha_nota DATE DEFAULT CURRENT_DATE,
+    subjetivo TEXT,
+    objetivo TEXT,
+    analisis TEXT,
+    plan TEXT,
+    notas_adicionales TEXT,
+    
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP
+);
+
+CREATE TABLE clinica."tCategoriaDocumento" (
+    id_categoria INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nombre VARCHAR(50) NOT NULL,
+    activo BOOLEAN DEFAULT TRUE,
+    UNIQUE(nombre)
+);
+
+CREATE TABLE clinica."tDocumentoPaciente" (
+    id_documento INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_paciente INT NOT NULL REFERENCES clinica."tPaciente"(id_paciente) ON DELETE CASCADE,
+    id_doctor INT NOT NULL REFERENCES usuario."tUsuario"(id_usuario) ON DELETE CASCADE,
+    id_tratamiento_realizado INT REFERENCES clinica."tTratamientoRealizado"(id_tratamiento_realizado) ON DELETE SET NULL,
+    id_cita INT REFERENCES clinica."tCita"(id_cita) ON DELETE SET NULL,
+    id_categoria INT REFERENCES clinica."tCategoriaDocumento"(id_categoria) ON DELETE SET NULL,
+
+    nombre_archivo VARCHAR(255) NOT NULL,
+    ruta_almacenamiento TEXT NOT NULL,   -- URL o path en bucket (S3, Supabase Storage)
+    mime_type VARCHAR(100),
+    tamanio_bytes INT,
+    descripcion TEXT,
+    
+    fecha_subida TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE clinica."tHorarioDoctor" (
+    id_horario INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_doctor INT NOT NULL REFERENCES usuario."tUsuario"(id_usuario) ON DELETE CASCADE,
+    dia_semana SMALLINT NOT NULL CHECK (dia_semana BETWEEN 0 AND 6),
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    margen_fin_minutos INT NOT NULL DEFAULT 0,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    CONSTRAINT ck_hora_fin_mayor_inicio CHECK (hora_fin > hora_inicio),
+    -- Restricción de no solapamiento para el mismo doctor y día
+    CONSTRAINT excl_bloques_doctor EXCLUDE USING GIST (
+        id_doctor WITH =,
+        dia_semana WITH =,
+        tsrange(
+            (DATE '2000-01-01' + hora_inicio),
+            (DATE '2000-01-01' + hora_fin),
+            '[)'
+        ) WITH &&
+    )
+);
+
+COMMENT ON COLUMN clinica."tHorarioDoctor".margen_fin_minutos IS 'Minutos de buffer al final del bloque (ej. 30 para no agendar a menos de 30 min del cierre)';
+
+
+CREATE TABLE clinica."lClinica" (
+    id_log_clinica INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_usuario INT NULL REFERENCES usuario."tUsuario"(id_usuario) ON DELETE SET NULL,
+    mensaje_error VARCHAR(500),
+    detalle_error TEXT,
+    clase VARCHAR(100),
+    metodo VARCHAR(100),
+    ip_address INET,
+    user_agent TEXT,
+    fecha_error_log TIMESTAMP DEFAULT NOW()
+);
+
+
+CREATE TABLE clinica."lDoctor" (
+    id_log_doctor INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_usuario INT NULL REFERENCES usuario."tUsuario"(id_usuario) ON DELETE SET NULL,
+    mensaje_error VARCHAR(500),
+    detalle_error TEXT,
+    clase VARCHAR(100),
+    metodo VARCHAR(100),
+    ip_address INET,
+    user_agent TEXT,
+    fecha_error_log TIMESTAMP DEFAULT NOW()
+);
+
+
+-- Índices para búsquedas frecuentes
+CREATE INDEX idx_paciente_doctor ON clinica."tPaciente" (id_doctor);
+CREATE INDEX idx_paciente_nombre ON clinica."tPaciente" (nombre, apellido_paterno, apellido_materno);
+CREATE INDEX idx_paciente_telefono ON clinica."tPaciente" (telefono_principal);
+
+CREATE INDEX idx_historia_paciente ON clinica."tHistoriaMedica" (id_paciente);
+
+CREATE INDEX idx_documento_paciente ON clinica."tDocumentoPaciente" (id_paciente);
+CREATE INDEX idx_documento_cita ON clinica."tDocumentoPaciente" (id_cita);
+CREATE INDEX idx_documento_categoria ON clinica."tDocumentoPaciente" (id_categoria);
+
+CREATE INDEX idx_nota_paciente ON clinica."tNotaClinica" (id_paciente);
+
+CREATE INDEX idx_tr_realizado_paciente ON clinica."tTratamientoRealizado" (id_paciente);
+CREATE INDEX idx_tr_realizado_fecha ON clinica."tTratamientoRealizado" (fecha_tratamiento);
+
+CREATE INDEX idx_cita_doctor_fecha ON clinica."tCita" (id_doctor, fecha_hora_inicio);
+CREATE INDEX idx_cita_paciente ON clinica."tCita" (id_paciente);
+
+CREATE INDEX idx_tratamiento_doctor ON clinica."tTratamiento" (id_doctor);
+
+CREATE INDEX idx_odontograma_paciente ON clinica."tOdontograma" (id_paciente);
+
+CREATE INDEX idx_log_fecha ON clinica."lClinica" (fecha_error_log);
+CREATE INDEX idx_log_usuario ON clinica."lClinica" (id_usuario);
+CREATE INDEX idx_log_ip ON clinica."lClinica" (ip_address);
+
+CREATE INDEX idx_horario_doctor_dia ON clinica."tHorarioDoctor" (id_doctor, dia_semana);
+
+
+-- Inserciones iniciales
+INSERT INTO clinica."tCategoriaDocumento" (nombre) VALUES
+  ('Evidencia fotográfica'),
+  ('Consentimiento informado'),
+  ('Radiografía'),
+  ('Receta'),
+  ('Odontograma'),
+  ('Otro');
+
+
+-- Funciones
+CREATE OR REPLACE FUNCTION clinica.crear_paciente(
+    _id_doctor INT,
+    _nombre VARCHAR,
+    _telefono_principal VARCHAR,
+    _apellido_paterno VARCHAR DEFAULT NULL,
+    _apellido_materno VARCHAR DEFAULT NULL,
+    _fecha_nacimiento DATE DEFAULT NULL,
+    _sexo CHAR DEFAULT NULL,
+    _correo_electronico VARCHAR DEFAULT NULL,
+    _telefono_secundario VARCHAR DEFAULT NULL,
+    _calle VARCHAR DEFAULT NULL,
+    _numero_exterior VARCHAR DEFAULT NULL,
+    _numero_interior VARCHAR DEFAULT NULL,
+    _colonia VARCHAR DEFAULT NULL,
+    _ciudad VARCHAR DEFAULT NULL,
+    _estado VARCHAR DEFAULT NULL,
+    _codigo_postal VARCHAR DEFAULT NULL,
+    _pais VARCHAR DEFAULT 'México',
+    _contacto_emergencia_nombre VARCHAR DEFAULT NULL,
+    _contacto_emergencia_parentesco VARCHAR DEFAULT NULL,
+    _contacto_emergencia_telefono VARCHAR DEFAULT NULL,
+    _ocupacion VARCHAR DEFAULT NULL,
+    _referido_por VARCHAR DEFAULT NULL
+)
+RETURNS INT AS $$
+DECLARE
+    nuevo_id INT;
+BEGIN
+    INSERT INTO clinica."tPaciente" (
+        id_doctor, nombre, apellido_paterno, apellido_materno,
+        fecha_nacimiento, sexo, telefono_principal, correo_electronico,
+        telefono_secundario, calle, numero_exterior, numero_interior,
+        colonia, ciudad, estado, codigo_postal, pais,
+        contacto_emergencia_nombre, contacto_emergencia_parentesco,
+        contacto_emergencia_telefono, ocupacion, referido_por
+    ) VALUES (
+        _id_doctor, _nombre, _apellido_paterno, _apellido_materno,
+        _fecha_nacimiento, _sexo, _telefono_principal, _correo_electronico,
+        _telefono_secundario, _calle, _numero_exterior, _numero_interior,
+        _colonia, _ciudad, _estado, _codigo_postal, _pais,
+        _contacto_emergencia_nombre, _contacto_emergencia_parentesco,
+        _contacto_emergencia_telefono, _ocupacion, _referido_por
+    )
+    RETURNING id_paciente INTO nuevo_id;
+    
+    INSERT INTO clinica."tHistoriaMedica" (id_paciente) VALUES (nuevo_id);
+    INSERT INTO clinica."tHistoriaDental" (id_paciente) VALUES (nuevo_id);
+    
+    RETURN nuevo_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+CREATE OR REPLACE FUNCTION clinica.obtener_expediente(_id_paciente INT)
+RETURNS JSON AS $$
+DECLARE
+    resultado JSON;
+BEGIN
+    SELECT json_build_object(
+        'paciente', row_to_json(p),
+        'historia_medica', row_to_json(hm),
+        'historia_dental', row_to_json(hd),
+        'ultimas_citas', (SELECT json_agg(row_to_json(c)) FROM clinica."tCita" c WHERE c.id_paciente = _id_paciente ORDER BY c.fecha_hora_inicio DESC LIMIT 10),
+        'ultimos_tratamientos', (SELECT json_agg(row_to_json(tr)) FROM clinica."tTratamientoRealizado" tr WHERE tr.id_paciente = _id_paciente ORDER BY tr.fecha_tratamiento DESC LIMIT 20),
+        'odontograma', (SELECT json_agg(row_to_json(o)) FROM clinica."tOdontograma" o WHERE o.id_paciente = _id_paciente)
+    )
+    INTO resultado
+    FROM clinica."tPaciente" p
+    LEFT JOIN clinica."tHistoriaMedica" hm ON p.id_paciente = hm.id_paciente
+    LEFT JOIN clinica."tHistoriaDental" hd ON p.id_paciente = hd.id_paciente
+    WHERE p.id_paciente = _id_paciente;
+    
+    RETURN resultado;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+
+CREATE OR REPLACE FUNCTION clinica.validar_cita_horario()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_duracion INT;
+    v_inicio TIME;
+    v_fin TIME;
+    v_dia SMALLINT;
+    v_valido BOOLEAN;
+BEGIN
+    -- Obtener duración del tratamiento si está asociado, si no usar intervalo de la cita
+    IF NEW.id_tratamiento IS NOT NULL THEN
+        SELECT duracion_minutos INTO v_duracion
+        FROM clinica."tTratamiento"
+        WHERE id_tratamiento = NEW.id_tratamiento
+          AND id_doctor = NEW.id_doctor;
+        IF v_duracion IS NULL THEN
+            v_duracion := EXTRACT(EPOCH FROM (NEW.fecha_hora_fin - NEW.fecha_hora_inicio)) / 60;
+        END IF;
+    ELSE
+        v_duracion := EXTRACT(EPOCH FROM (NEW.fecha_hora_fin - NEW.fecha_hora_inicio)) / 60;
+    END IF;
+
+    v_inicio := NEW.fecha_hora_inicio::TIME;
+    v_fin := NEW.fecha_hora_fin::TIME;
+    v_dia := EXTRACT(DOW FROM NEW.fecha_hora_inicio); -- 0=Dom..6=Sáb
+
+    -- 1. Verificar que la cita caiga dentro de un bloque laboral (respetando margen de fin)
+    SELECT TRUE INTO v_valido
+    FROM clinica."tHorarioDoctor"
+    WHERE id_doctor = NEW.id_doctor
+      AND dia_semana = v_dia
+      AND activo = TRUE
+      AND hora_inicio <= v_inicio
+      AND (hora_fin - (margen_fin_minutos || ' minutes')::INTERVAL) >= v_fin
+    LIMIT 1;
+
+    IF v_valido IS NULL THEN
+        RAISE EXCEPTION 'La cita está fuera del horario laboral del doctor o no respeta el margen.';
+    END IF;
+
+    -- 2. Verificar que el doctor no tenga otra cita activa que se solape
+    IF EXISTS (
+        SELECT 1
+        FROM clinica."tCita"
+        WHERE id_doctor = NEW.id_doctor
+          AND id_cita IS DISTINCT FROM NEW.id_cita
+          AND estado IN ('programada', 'confirmada', 'en_curso')   -- Solo estas bloquean disponibilidad
+          AND tsrange(fecha_hora_inicio, fecha_hora_fin, '[)') &&
+              tsrange(NEW.fecha_hora_inicio, NEW.fecha_hora_fin, '[)')
+    ) THEN
+        RAISE EXCEPTION 'El doctor ya tiene una cita en ese horario.';
+    END IF;
+
+    -- Verificar que el paciente no tenga otra cita activa al mismo tiempo.
+    IF EXISTS (
+        SELECT 1
+        FROM clinica."tCita"
+        WHERE id_paciente = NEW.id_paciente
+          AND id_cita IS DISTINCT FROM NEW.id_cita
+          AND estado IN ('programada', 'confirmada', 'en_curso')
+          AND tsrange(fecha_hora_inicio, fecha_hora_fin, '[)') &&
+              tsrange(NEW.fecha_hora_inicio, NEW.fecha_hora_fin, '[)')
+    ) THEN
+        RAISE EXCEPTION 'El paciente ya tiene otra cita en ese horario.';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION clinica.horarios_libres(
+    _id_doctor INT,
+    _fecha DATE,
+    _duracion_minutos INT
+)
+RETURNS TABLE (inicio TIME, fin TIME) AS $$
+BEGIN
+    RETURN QUERY
+    WITH bloques AS (
+        SELECT hora_inicio, (hora_fin - (margen_fin_minutos || ' minutes')::INTERVAL)::TIME AS hora_fin
+        FROM clinica."tHorarioDoctor"
+        WHERE id_doctor = _id_doctor
+          AND dia_semana = EXTRACT(DOW FROM _fecha)
+          AND activo = TRUE
+    ),
+    citas_ordenadas AS (
+        SELECT fecha_hora_inicio::TIME AS ini, fecha_hora_fin::TIME AS fin
+        FROM clinica."tCita"
+        WHERE id_doctor = _id_doctor
+          AND fecha_hora_inicio::DATE = _fecha
+          AND estado NOT IN ('cancelada', 'no_asistio')
+        ORDER BY ini
+    ),
+    huecos AS (
+        SELECT b.hora_inicio AS hueco_inicio,
+               COALESCE(
+                   (SELECT c.ini
+                    FROM citas_ordenadas c
+                    WHERE c.ini >= b.hora_inicio AND c.ini < b.hora_fin
+                    ORDER BY c.ini LIMIT 1),
+                   b.hora_fin
+               ) AS hueco_fin
+        FROM bloques b
+        UNION ALL
+        SELECT c.fin AS hueco_inicio,
+               COALESCE(
+                   (SELECT c2.ini
+                    FROM citas_ordenadas c2
+                    WHERE c2.ini > c.fin AND c2.ini <= b.hora_fin
+                    ORDER BY c2.ini LIMIT 1),
+                   b.hora_fin
+               ) AS hueco_fin
+        FROM bloques b
+        JOIN citas_ordenadas c ON c.ini >= b.hora_inicio AND c.ini < b.hora_fin
+    )
+    SELECT hueco_inicio, hueco_fin
+    FROM huecos
+    WHERE hueco_fin - hueco_inicio >= (_duracion_minutos || ' minutes')::INTERVAL
+    ORDER BY hueco_inicio;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+
+CREATE OR REPLACE FUNCTION clinica.crear_cita_con_paciente(
+    -- Datos del doctor (obligatorio, ya que es su agenda)
+    _id_doctor INT,
+    
+    -- Datos de la cita
+    _fecha_hora_inicio TIMESTAMP,
+    _fecha_hora_fin TIMESTAMP,
+    _id_tratamiento INT DEFAULT NULL,
+    _estado VARCHAR DEFAULT 'programada',
+    _tipo_cita VARCHAR DEFAULT NULL,
+    _notas TEXT DEFAULT NULL,
+    _color VARCHAR DEFAULT NULL,
+    
+    -- Datos del paciente: o bien un id existente...
+    _id_paciente INT DEFAULT NULL,
+    -- ...o bien datos para crear uno nuevo (mínimo nombre y teléfono)
+    _nombre_nuevo VARCHAR DEFAULT NULL,
+    _telefono_principal_nuevo VARCHAR DEFAULT NULL,
+    _correo_nuevo VARCHAR DEFAULT NULL
+)
+RETURNS TABLE (id_cita INT, id_paciente INT) AS $$
+DECLARE
+    v_id_paciente INT;
+    v_id_cita INT;
+BEGIN
+    -- Validación básica: o se proporciona un id_paciente existente, o los datos para crear uno nuevo.
+    IF _id_paciente IS NULL THEN
+        IF _nombre_nuevo IS NULL OR _telefono_principal_nuevo IS NULL THEN
+            RAISE EXCEPTION 'Debe proporcionar un id_paciente o al menos nombre y teléfono para un nuevo paciente.';
+        END IF;
+        
+        -- Crear el nuevo paciente usando la función ya existente
+        v_id_paciente := clinica.crear_paciente(
+            _id_doctor,
+            _nombre_nuevo,
+            _telefono_principal_nuevo,
+            _correo_electronico := _correo_nuevo   -- el resto de parámetros tomarán sus valores por defecto
+        );
+    ELSE
+        -- Verificar que el paciente exista y pertenezca al doctor (si quieres forzar esa restricción)
+        SELECT id_paciente INTO v_id_paciente
+        FROM clinica."tPaciente"
+        WHERE id_paciente = _id_paciente AND id_doctor = _id_doctor;
+        
+        IF v_id_paciente IS NULL THEN
+            RAISE EXCEPTION 'Paciente inexistente o no pertenece a este doctor.';
+        END IF;
+    END IF;
+    
+    -- Insertar la cita
+    INSERT INTO clinica."tCita" (
+        id_paciente, id_doctor, id_tratamiento,
+        fecha_hora_inicio, fecha_hora_fin,
+        estado, tipo_cita, notas, color
+    ) VALUES (
+        v_id_paciente, _id_doctor, _id_tratamiento,
+        _fecha_hora_inicio, _fecha_hora_fin,
+        _estado, _tipo_cita, _notas, _color
+    )
+    RETURNING tCita.id_cita INTO v_id_cita;
+    
+    RETURN QUERY SELECT v_id_cita, v_id_paciente;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Triggers
+CREATE TRIGGER trg_validar_cita
+BEFORE INSERT OR UPDATE ON clinica."tCita"
+FOR EACH ROW EXECUTE FUNCTION clinica.validar_cita_horario();
+
+-- Permisos
+GRANT USAGE ON SCHEMA clinica TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA clinica TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA clinica GRANT ALL ON TABLES TO anon, authenticated, service_role;
