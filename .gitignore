@@ -1,0 +1,38 @@
+# Dependencias
+node_modules/
+package-lock.json
+yarn.lock
+
+# Compilación y código generado
+dist/
+build/
+*.tsbuildinfo
+
+# Variables de entorno
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Configuración local de Supabase (si usas CLI)
+.supabase/
+
+# Otros
+*.tmp
+*.temp
