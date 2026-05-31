@@ -2,6 +2,7 @@ import express, { Application } from "express";
 import morgan from "morgan";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import AuthRoutes from "./routes/authRoute"
 
 class Server {
     public app: Application;
@@ -28,6 +29,7 @@ class Server {
     }
 
     routes() : void {
+        this.app.use("/api/auth", AuthRoutes);
     }
 
     start(): void {
