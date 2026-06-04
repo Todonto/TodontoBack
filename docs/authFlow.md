@@ -8,10 +8,10 @@
 ## Headers Generales
 
 ### Para endpoints POST con JSON
-Content-Type: application/json
+**Content-Type:** application/json
 
 ### Para endpoints protegidos
-Authorization: Bearer {access_token}
+**Authorization:** Bearer {access_token}
 
 ---
 
@@ -19,11 +19,12 @@ Authorization: Bearer {access_token}
 
 ### 1. Registro de Usuario
 
-Endpoint: POST /register
+**Endpoint:** POST /register
 
-Headers: Content-Type: application/json
+**Headers:** Content-Type: application/json
 
-Body:
+**Body:**
+```json
 {
   "nombre_usuario": "José Armando",
   "apellido_paterno": "Ruano",
@@ -36,8 +37,9 @@ Body:
   "acepta_aviso_privacidad": true,
   "acepta_terminos_condiciones": true
 }
+```
 
-Validaciones:
+**Validaciones:**
 - Nombre entre 3 y 50 caracteres
 - Apellido paterno entre 5 y 50 caracteres
 - Email válido
@@ -45,7 +47,8 @@ Validaciones:
 - Mayor de edad (18+)
 - Contraseña segura: mayúscula, minúscula, número, carácter especial, sin espacios, mínimo 8 caracteres
 
-Respuesta Esperada (201):
+**Respuesta Esperada (201):**
+```json
 {
   "message": "Usuario registrado exitosamente",
   "user": {
@@ -55,8 +58,9 @@ Respuesta Esperada (201):
   },
   "next_step": "verify-email"
 }
+```
 
-Flujo Frontend:
+**Flujo Frontend:**
 1. Mostrar mensaje de éxito
 2. Redirigir a pantalla de verificar correo
 
@@ -64,37 +68,45 @@ Flujo Frontend:
 
 ### 2. Enviar Código de Verificación
 
-Endpoint: POST /send-verification-code
+**Endpoint:** POST /send-verification-code
 
-Headers: Content-Type: application/json
+**Headers:** Content-Type: application/json
 
-Body:
+**Body:**
+```json
 {
   "correo": "armando.dev@gmail.com"
 }
+```
 
-Respuesta Esperada (200):
+**Respuesta Esperada (200):**
+```json
 {
   "message": "Código de verificación enviado. Revisa tu correo."
 }
+```
 
-Uso Frontend: Botón "Enviar código" o "Reenviar código"
+**Uso Frontend:**
+Botón "Enviar código" o "Reenviar código"
 
 ---
 
 ### 3. Verificar Correo
 
-Endpoint: POST /verify-email
+**Endpoint:** POST /verify-email
 
-Headers: Content-Type: application/json
+**Headers:** Content-Type: application/json
 
-Body:
+**Body:**
+```json
 {
   "correo": "armando.dev@gmail.com",
   "codigo": "123456"
 }
+```
 
-Respuesta Esperada (200):
+**Respuesta Esperada (200):**
+```json
 {
   "message": "Correo verificado exitosamente",
   "user": {
@@ -108,8 +120,9 @@ Respuesta Esperada (200):
     "expires_in": "15m"
   }
 }
+```
 
-Flujo Frontend:
+**Flujo Frontend:**
 1. Guardar tokens (access_token en memoria/sessionStorage, refresh_token en HttpOnly Cookie)
 2. Redirigir al dashboard
 
@@ -117,17 +130,20 @@ Flujo Frontend:
 
 ### 4. Login
 
-Endpoint: POST /login
+**Endpoint:** POST /login
 
-Headers: Content-Type: application/json
+**Headers:** Content-Type: application/json
 
-Body:
+**Body:**
+```json
 {
   "correo": "armando.dev@gmail.com",
   "contrasena": "Password123!"
 }
+```
 
-Respuesta Esperada (200):
+**Respuesta Esperada (200):**
+```json
 {
   "message": "Inicio de sesión exitoso",
   "user": {
@@ -141,13 +157,14 @@ Respuesta Esperada (200):
     "expires_in": "15m"
   }
 }
+```
 
-Posibles Errores:
+**Posibles Errores:**
 - 401: Credenciales inválidas (contraseña incorrecta)
 - 403: Correo no verificado
 - 423: Cuenta bloqueada por intentos fallidos (15 min)
 
-Seguridad:
+**Seguridad:**
 - 5 intentos fallidos = bloqueo de 15 minutos
 - Máximo 3 sesiones activas simultáneas
 - Alerta de seguridad enviada por correo al iniciar sesión
@@ -156,60 +173,70 @@ Seguridad:
 
 ### 5. Solicitar Recuperación de Contraseña
 
-Endpoint: POST /send-password-reset-code
+**Endpoint:** POST /send-password-reset-code
 
-Headers: Content-Type: application/json
+**Headers:** Content-Type: application/json
 
-Body:
+**Body:**
+```json
 {
   "correo": "armando.dev@gmail.com"
 }
+```
 
-Respuesta Esperada (200):
+**Respuesta Esperada (200):**
+```json
 {
   "message": "Si el correo está registrado, recibirás un código para restablecer tu contraseña"
 }
+```
 
-Nota: Por seguridad, el mensaje es el mismo aunque el correo no exista en la BD
+**Nota:** Por seguridad, el mensaje es el mismo aunque el correo no exista en la BD
 
 ---
 
 ### 6. Verificar Código de Recuperación
 
-Endpoint: POST /verify-password-code
+**Endpoint:** POST /verify-password-code
 
-Headers: Content-Type: application/json
+**Headers:** Content-Type: application/json
 
-Body:
+**Body:**
+```json
 {
   "correo": "armando.dev@gmail.com",
   "codigo": "123456"
 }
+```
 
-Respuesta Esperada (200):
+**Respuesta Esperada (200):**
+```json
 {
   "message": "Código verificado correctamente",
   "reset_token": "...",
   "expires_in": "10 minutos"
 }
+```
 
-Nota: El reset_token expira en 10 minutos
+**Nota:** El reset_token expira en 10 minutos
 
 ---
 
 ### 7. Cambiar Contraseña
 
-Endpoint: POST /reset-password
+**Endpoint:** POST /reset-password
 
-Headers: Content-Type: application/json
+**Headers:** Content-Type: application/json
 
-Body:
+**Body:**
+```json
 {
   "reset_token": "...",
   "nueva_contrasena": "NuevaPass123!"
 }
+```
 
-Validaciones:
+**Validaciones:**
 - Mínimo 8 caracteres
 - Máximo 70 caracteres
 - Al menos una mayúscula
@@ -218,12 +245,14 @@ Validaciones:
 - Al menos un carácter especial
 - Sin espacios
 
-Respuesta Esperada (200):
+**Respuesta Esperada (200):**
+```json
 {
   "message": "Contraseña actualizada exitosamente. Por seguridad, todas las sesiones han sido cerradas."
 }
+```
 
-Consecuencias:
+**Consecuencias:**
 - Actualiza la contraseña
 - Cierra TODAS las sesiones activas
 - Envía correo de confirmación del cambio
@@ -232,16 +261,19 @@ Consecuencias:
 
 ### 8. Renovar Token (Refresh Token)
 
-Endpoint: POST /refresh-token
+**Endpoint:** POST /refresh-token
 
-Headers: Content-Type: application/json
+**Headers:** Content-Type: application/json
 
-Body:
+**Body:**
+```json
 {
   "refresh_token": "..."
 }
+```
 
-Respuesta Esperada (200):
+**Respuesta Esperada (200):**
+```json
 {
   "message": "Token refrescado exitosamente",
   "tokens": {
@@ -249,13 +281,14 @@ Respuesta Esperada (200):
     "expires_in": "15m"
   }
 }
+```
 
-Seguridad:
+**Seguridad:**
 - Refresh Token Rotativo: se revoca el anterior y se genera uno nuevo
 - Si se detecta un token ya revocado (posible robo): se invalida la sesión
 - Se guarda IP y User-Agent de cada sesión
 
-Flujo Frontend:
+**Flujo Frontend:**
 1. Detectar error 401 en una petición
 2. Llamar a POST /refresh-token con el refresh_token almacenado
 3. Guardar los nuevos tokens
@@ -318,8 +351,8 @@ Flujo Frontend:
 ## Notas para Frontend
 
 ### Almacenamiento de Tokens (Recomendado)
-- access_token: en memoria (variable) o sessionStorage. NUNCA en localStorage
-- refresh_token: en HttpOnly Cookie (ideal). Si no es posible, usar sessionStorage con precauciones adicionales
+- **access_token:** en memoria (variable) o sessionStorage. NUNCA en localStorage
+- **refresh_token:** en HttpOnly Cookie (ideal). Si no es posible, usar sessionStorage con precauciones adicionales
 
 ### Consumo de APIs Protegidas
 Incluir en cada petición:
@@ -338,7 +371,7 @@ Authorization: Bearer {access_token}
 ## Estructura del Código
 
 ### authRoutes.ts
-Define todas las rutas y aplica rate limits específicos:
+**Define todas las rutas y aplica rate limits específicos:**
 - POST /register → registerLimiter → authController.register
 - POST /login → loginLimiter → authController.login
 - POST /send-verification-code → sendVerificationLimiter → authController.sendVerificationCode
@@ -349,7 +382,7 @@ Define todas las rutas y aplica rate limits específicos:
 - POST /refresh-token → refreshTokenLimiter → authController.refreshToken
 
 ### authController.ts
-Métodos principales:
+**Métodos principales:**
 - register(): Validación y creación de usuario nuevo
 - sendVerificationCode(): Genera y envía código OTP de 6 dígitos
 - verifyEmail(): Valida código y activa la cuenta, genera tokens de sesión
