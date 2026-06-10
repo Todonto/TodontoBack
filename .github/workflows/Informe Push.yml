@@ -1,9 +1,9 @@
-name: evento_push
+name: informe_Push
 on: 
   push:
 
 jobs:
-  Tarea1:
+  Push:
     runs-on: ubuntu-latest
 
     steps:
