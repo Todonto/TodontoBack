@@ -3,7 +3,7 @@ name: Control de Calidad (ESLint)
 # Se ejecuta en pushes a main y en cualquier Pull Request
 on:
   push:
-    branches: [ main ]
+    branches: [ production ]
   pull_request:
 
 jobs:
