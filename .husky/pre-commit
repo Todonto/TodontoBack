@@ -1,1 +1,4 @@
-echo "Validando commit valido ..."
+#!/usr/bin/env sh
+
+echo "Ejecutando ESLint..."
+npm run lint
