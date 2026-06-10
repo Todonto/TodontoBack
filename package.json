@@ -7,7 +7,8 @@
     "build": "tsc",
     "dev": "nodemon build/index.js",
     "watch": "tsc -w",
-    "prepare": "husky"
+    "prepare": "husky",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "",
@@ -32,6 +33,9 @@
     "stripe": "^22.1.0"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.0.2",
+    "@commitlint/config-conventional": "^21.0.2",
+    "@eslint/js": "^10.0.1",
     "@types/bcrypt": "^6.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.6",
@@ -39,11 +43,11 @@
     "@types/multer": "^2.1.0",
     "@types/node": "^25.6.0",
     "@types/nodemailer": "^8.0.0",
-    "@commitlint/cli": "^21.0.2",
-    "@commitlint/config-conventional": "^21.0.2",
+    "eslint": "^10.4.1",
     "husky": "^9.1.7",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.0"
   }
 }

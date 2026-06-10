@@ -459,7 +459,7 @@ export async function sendSubscriptionEmail(
     }).format(price);
 
     // Determinar ciclo de facturación según el nombre del plan
-    let billingCycle = '';
+    let billingCycle: string;
     if (plan.toLowerCase().includes('mensual')) billingCycle = 'mes';
     else if (plan.toLowerCase().includes('anual')) billingCycle = 'año';
     else if (plan.toLowerCase().includes('prueba')) billingCycle = 'mes';

@@ -951,7 +951,7 @@ class AuthController {
             let decoded: any;
             try {
                 decoded = jwt.verify(reset_token, process.env.JWT_ACCESS_SECRET!);
-            } catch (err) {
+            } catch {
                 return res.status(401).json({ message: "Token inválido o expirado" });
             }
 
@@ -1062,7 +1062,7 @@ class AuthController {
                 if (!decoded) {
                     return res.status(401).json({ message: "Refresh token inválido o expirado" });
                 }
-            } catch (err) {
+            } catch {
                 return res.status(401).json({ message: "Refresh token inválido o expirado" });
             }
 
@@ -1253,7 +1253,7 @@ class AuthController {
             return;
         }
 
-        let nuevosIntentos = (acceso?.intentos_fallidos || 0) + 1;
+        const nuevosIntentos = (acceso?.intentos_fallidos || 0) + 1;
         const bloqueado_hasta = nuevosIntentos >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
 
         const { error: updateError } = await supabase

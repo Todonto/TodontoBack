@@ -1,1 +1,5 @@
+#!/usr/bin/env sh
+
+echo "Comprobando mensaje de commit..."
+
 npx --no -- commitlint --edit "$1"

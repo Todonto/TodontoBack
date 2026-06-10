@@ -59,7 +59,7 @@ export async function hashRefreshToken(refreshToken: string): Promise<string> {
 export function verifyAccessToken(token: string): TokenPayload | null {
     try {
         return jwt.verify(token, JWT_ACCESS_SECRET) as TokenPayload;
-    } catch (error) {
+    } catch {
         return null;
     }
 }
@@ -70,7 +70,7 @@ export function verifyAccessToken(token: string): TokenPayload | null {
 export function verifyRefreshToken(token: string): TokenPayload | null {
     try {
         return jwt.verify(token, JWT_REFRESH_SECRET) as TokenPayload;
-    } catch (error) {
+    } catch  {
         return null;
     }
 }
