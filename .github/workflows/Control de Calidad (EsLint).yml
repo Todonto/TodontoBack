@@ -1,0 +1,31 @@
+name: Control de Calidad (ESLint)
+
+# Se ejecuta en pushes a main y en cualquier Pull Request
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  eslint-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Copiar el código del repositorio a la maquina virtual
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
+
+      # 2. Instalar Node.js en la máquina virtual
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Usamos una versión estable y moderna
+          cache: 'npm'       # Guarda en caché as dependencias para que corra más rápido
+
+      # 3. Instalar ESLint y las dependencias del proyecto
+      - name: Instalar dependencias
+        run: npm ci
+
+      # 4. Ejecutar el validador
+      - name: Ejecutar ESLint
+        run: npm run lint
