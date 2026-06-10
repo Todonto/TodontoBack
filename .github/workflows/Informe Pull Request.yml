@@ -1,0 +1,29 @@
+name: informe_Pull_Request
+
+on:
+  pull_request:
+    types:
+      - closed
+jobs:
+  PR:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Informe
+        run: |
+          echo "Titulo: ${{ github.event.pull_request.title }}"
+          echo "Contenido: ${{ github.event.pull_request.body }}"
+          echo "Origen: ${{ github.event.pull_request.head.ref }}"
+          echo "Destino: ${{ github.event.pull_request.base.ref }}"
+          echo "Estado: ${{ github.event.pull_request.state }}"
+          echo "Fusionado: ${{ github.event.pull_request.merged }}"
+          echo "Autor: ${{ github.event.pull_request.user.login }}"
+          echo "URL: ${{ github.event.pull_request.html_url }}"
+          echo "Repositorio: ${{ github.repository }}"
+      - name: Estado de Fusion
+        run: |
+          if [ "${{ github.event.pull_request.merged }}" = "true" ]; then
+            echo "El Pull Request fue fusionado"
+          else
+            echo "El Pull Request fue cerrado sin fusionarse"
+          fi

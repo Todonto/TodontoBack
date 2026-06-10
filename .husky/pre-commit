@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+
+echo "Ejecutando ESLint..."
+npm run lint

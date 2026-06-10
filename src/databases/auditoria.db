@@ -1,0 +1,23 @@
+CREATE SCHEMA IF NOT EXISTS auditoria;
+
+CREATE TABLE auditoria."tAuditoria" (
+    id_auditoria BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_usuario INT NULL REFERENCES usuario."tUsuario"(id_usuario) ON DELETE SET NULL,
+    accion VARCHAR(100) NOT NULL,  -- 'register', 'login', 'email_verify', 'password_reset'...
+    entidad VARCHAR(50),           -- 'tUsuario', 'tSesion', 'tCodigosVerificacion'
+    entidad_id INT,
+    detalles JSONB,
+    ip_address INET,
+    user_agent TEXT,
+    fecha TIMESTAMP DEFAULT NOW()
+);
+
+-- Índices útiles
+CREATE INDEX idx_auditoria_usuario ON auditoria."tAuditoria" (id_usuario);
+CREATE INDEX idx_auditoria_accion ON auditoria."tAuditoria" (accion);
+CREATE INDEX idx_auditoria_fecha ON auditoria."tAuditoria" (fecha);
+
+-- Permisos
+GRANT USAGE ON SCHEMA auditoria TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA auditoria TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA auditoria GRANT ALL ON TABLES TO anon, authenticated, service_role;

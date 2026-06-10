@@ -1,0 +1,17 @@
+name: informe_Push
+on: 
+  push:
+
+jobs:
+  Push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Informe
+        run: |
+          echo "Autor: ${{github.event.head_commit.author.name}}"
+          echo "Message: ${{github.event.head_commit.message}}"
+          echo "ID: ${{github.event.head_commit.id}}"
+          echo "URL: ${{github.event.head_commit.url}}"
+          echo "Branch: ${{github.ref_name}}"
+          echo "Repository: ${{github.repository}}"

@@ -1,0 +1,34 @@
+CREATE TABLE sistema."lSistema" (
+    id_log_sistema INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_usuario INT NULL REFERENCES usuario."tUsuario"(id_usuario) ON DELETE SET NULL,
+    mensaje_error VARCHAR(500),
+    detalle_error TEXT,
+    clase VARCHAR(100),
+    metodo VARCHAR(100),
+    ip_address INET,
+    user_agent TEXT,
+    fecha_error_log TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE sistema."tCodigosVerificacion" (
+    id_codigo INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_usuario INT NOT NULL REFERENCES usuario."tUsuario"(id_usuario) ON DELETE CASCADE,
+    codigo VARCHAR(6) NOT NULL,
+    expira TIMESTAMP NOT NULL,
+    usado BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Índices
+CREATE INDEX idx_log_fecha ON sistema."lSistema" (fecha_error_log);
+CREATE INDEX idx_log_usuario ON sistema."lSistema" (id_usuario);
+CREATE INDEX idx_log_ip ON sistema."lSistema" (ip_address);
+
+CREATE INDEX idx_codigos_usuario ON sistema."tCodigosVerificacion" (id_usuario);
+CREATE INDEX idx_codigos_codigo ON sistema."tCodigosVerificacion" (codigo);
+CREATE INDEX idx_codigos_expira ON sistema."tCodigosVerificacion" (expira) WHERE usado = FALSE;
+
+-- Permisos
+GRANT USAGE ON SCHEMA sistema TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA sistema TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA sistema GRANT ALL ON TABLES TO anon, authenticated, service_role;
