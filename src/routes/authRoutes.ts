@@ -77,6 +77,7 @@ class AuthRoutes {
         this.router.post("/reset-password", resetPasswordLimiter, authController.resetPassword);
         this.router.post("/refresh-token", refreshTokenLimiter, authController.refreshToken);
         this.router.get("/profile", authMiddleware, authController.getProfile);
+        this.router.post("/complete-profile", authMiddleware, authController.completeProfile);
     }
 }
 

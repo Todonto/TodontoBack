@@ -296,6 +296,159 @@ Botón "Enviar código" o "Reenviar código"
 
 ---
 
+### 9. Autenticación con Google
+
+**Endpoint:** POST /google
+
+**Headers:** Content-Type: application/json
+
+**Token**
+Para realizar este flujo, se debe contar con un token_id
+de Google que se puede obtener del siguiente link:
+
+https://developers.google.com/oauthplayground/
+
+Ingresar el cliente id de google y la llave secreta.
+Seleccionar OAuth2 API v2.
+Al autorizar, en el paso 2 se proporciona el token.
+
+**Body:**
+```json
+{
+  "id_token": "ey..."
+}
+```
+
+**Respuesta Esperada (200):**
+```json
+{
+    "message": "Inicio de sesión con Google exitoso",
+    "user": {
+        "id": 5,
+        "nombre_usuario": "Armando",
+        "correo_electronico": "armando.ruano.personal@gmail.com",
+        "suscripcion": {
+            "id": 5,
+            "tipo": "Inicio",
+            "descripcion": "Acceso gratuito con funcionalidad limitada",
+            "duracion_dias": null,
+            "precio": null,
+            "moneda": "MXN",
+            "fecha_inicio": "2026-06-20T22:41:35.513",
+            "fecha_fin": null,
+            "estado": "activa",
+            "vigente": true,
+            "max_pacientes": 10,
+            "max_citas_mes": 5,
+            "max_recetas_mes": 5,
+            "es_prueba": false,
+            "requiere_metodo_pago": false,
+            "cancelar_al_vencer": false
+        }
+    },
+    "tokens": {
+        "access_token": "ey...",
+        "expires_in": "15m"
+    }
+}
+```
+
+**Si es invalido o expirado**
+```json
+{
+    "message": "Token de Google inválido o expirado"
+}
+```
+
+**Seguridad:**
+- Refresh Token Rotativo: se revoca el anterior y se genera uno nuevo
+- Si se detecta un token ya revocado (posible robo): se invalida la sesión
+- Se guarda IP y User-Agent de cada sesión
+
+**Flujo Frontend:**
+1. Detectar error 401 en una petición
+2. Llamar a POST /refresh-token con el refresh_token almacenado
+3. Guardar los nuevos tokens
+4. Reintentar la petición original
+
+---
+
+### 10. Completar Perfil (Google)
+
+**Endpoint:** POST /complete-profile
+
+**Headers:**
+
+Content-Type: application/json
+
+**Authorization:** Bearer {access_token}
+
+**Body:**
+
+```json
+{
+  "fecha_nacimiento": "1990-05-15",
+  "sexo_usuario": "M",
+  "acepta_aviso_privacidad": true,
+  "acepta_terminos_condiciones": true,
+  "numero_telefono": "+525512345678"
+}
+```
+
+**Validaciones:**
+
+fecha_nacimiento: obligatorio, formato YYYY-MM-DD, mayor de 18 años, no futura, edad menor a 110 años.
+
+sexo_usuario: obligatorio, solo M, F u O.
+
+acepta_aviso_privacidad: obligatorio, debe ser true.
+
+acepta_terminos_condiciones: obligatorio, debe ser true.
+
+numero_telefono: opcional, si se envía debe tener entre 10 y 15 dígitos (permite formato internacional con +).
+
+**Respuesta Esperada (200):**
+
+```json
+{
+  "message": "Perfil completado exitosamente",
+  "tokens": {
+    "access_token": "...",
+    "expires_in": "15m"
+  }
+}
+```
+
+**Importante:**
+
+El nuevo access_token generado no contiene la bandera requires_profile_completion.
+
+A partir de este momento, el usuario podrá acceder a las rutas protegidas sin restricciones adicionales.
+
+**Posibles Errores:**
+
+400: Datos inválidos, se devuelve un arreglo errors con los mensajes de validación.
+
+401: No se envió el token de acceso o el token es inválido.
+
+500: Error interno del servidor.
+
+**Flujo Frontend:**
+
+Después de un inicio de sesión con Google (POST /google) que devuelva requires_profile_completion: true, redirigir automáticamente a la pantalla de "Completar Perfil".
+
+Mostrar un formulario con los campos: fecha de nacimiento, sexo, teléfono (opcional) y las casillas de verificación del aviso de privacidad y términos y condiciones.
+
+Al enviar el formulario, llamar a POST /api/auth/complete-profile con el access_token obtenido en el paso anterior.
+
+Recibir el nuevo access_token (sin la restricción) y guardarlo con authService.saveAccessToken().
+
+Redirigir al dashboard o a la ruta que el usuario intentaba acceder originalmente.
+
+**Nota:**
+Si el usuario ya había iniciado sesión con Google previamente pero no completó su perfil, este endpoint también actualizará sus datos y le otorgará un token completamente funcional.
+
+
 ## Flujo Completo en Frontend
 
 ### Registro de Nuevo Usuario
