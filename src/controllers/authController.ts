@@ -16,6 +16,7 @@ class AuthController {
         this.login = this.login.bind(this);
         this.registrarIntentoFallido = this.registrarIntentoFallido.bind(this);
         this.getProfile = this.getProfile.bind(this);
+        this.completeProfile = this.completeProfile.bind(this);
     }
 
     /**
@@ -237,7 +238,7 @@ class AuthController {
             const { data: existingUser, error: userError } = await supabase
                 .schema('usuario')
                 .from('tUsuario')
-                .select('id_usuario, nombre_usuario, apellido_paterno, apellido_materno, correo_verificado, id_rol_usuario, foto_perfil, tiene_cuenta_google')
+                .select('id_usuario, nombre_usuario, apellido_paterno, apellido_materno, correo_verificado, id_rol_usuario, foto_perfil, tiene_cuenta_google, acepta_aviso_privacidad, acepta_terminos_condiciones, fecha_nacimiento, sexo_usuario')
                 .eq('correo_electronico', googleEmail)
                 .maybeSingle();
 
@@ -292,7 +293,7 @@ class AuthController {
                 const nombre = nombres[0] || 'Usuario';
                 const apellidoPaterno = nombres.length > 1 ? nombres.slice(1).join(' ') : 'Google';
 
-                // Insertar usuario (sin contraseña, con teléfono placeholder)
+                // Insertar usuario (sin contraseña)
                 const { data: newUser, error: insertError } = await supabase
                     .schema('usuario')
                     .from('tUsuario')
@@ -307,10 +308,6 @@ class AuthController {
                         contrasena_hash: null,
                         tiene_cuenta_google: true,
                         correo_verificado: true,
-                        acepta_aviso_privacidad: true,
-                        fecha_aceptacion_aviso: ahora,
-                        acepta_terminos_condiciones: true,
-                        fecha_aceptacion_terminos: ahora,
                         id_rol_usuario: Number(process.env.DEFAULT_ROLE_ID || 2),
                         created_at: ahora
                     })
@@ -428,6 +425,18 @@ class AuthController {
                 };
             }
 
+            let perfilCompleto = true;
+            if (existingUser) {
+                // Verificar campos requeridos
+                if (!existingUser.acepta_aviso_privacidad || !existingUser.acepta_terminos_condiciones ||
+                    !existingUser.fecha_nacimiento || !existingUser.sexo_usuario) {
+                    perfilCompleto = false;
+                }
+            } else {
+                // Nuevo usuario: siempre incompleto porque no aceptó términos ni tiene fecha/sexo
+                perfilCompleto = false;
+            }
+
             // Generar tokens y sesión
             const tokenPayload: TokenPayload = {
                 id_usuario: userId,
@@ -517,7 +526,8 @@ class AuthController {
                 tokens: {
                     access_token: accessToken,
                     expires_in: process.env.JWT_ACCESS_EXPIRES_IN
-                }
+                },
+                requires_profile_completion: !perfilCompleto
             });
 
         } catch (err: any) {
@@ -526,6 +536,113 @@ class AuthController {
         }
     }
 
+    /**
+     * POST /api/auth/complete-profile
+     * Completa perfil con datos faltantes.
+     */
+    public async completeProfile(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user?.id_usuario;
+            if (!userId) {
+                return res.status(401).json({ message: 'No autorizado' });
+            }
+
+            const { fecha_nacimiento, sexo_usuario, acepta_aviso_privacidad, acepta_terminos_condiciones, numero_telefono } = req.body;
+
+            const errores: string[] = [];
+
+            // Validar fecha de nacimiento
+            if (!fecha_nacimiento) {
+                errores.push('La fecha de nacimiento es obligatoria');
+            } else {
+                const nacimiento = new Date(fecha_nacimiento);
+                if (isNaN(nacimiento.getTime())) {
+                    errores.push('Fecha de nacimiento inválida');
+                } else {
+                    const hoy = new Date();
+                    if (nacimiento > hoy) errores.push('La fecha no puede ser futura');
+                    let edad = hoy.getFullYear() - nacimiento.getFullYear();
+                    const aunNoCumple = hoy.getMonth() < nacimiento.getMonth() ||
+                        (hoy.getMonth() === nacimiento.getMonth() && hoy.getDate() < nacimiento.getDate());
+                    if (aunNoCumple) edad--;
+                    if (edad > 110) errores.push('Edad no válida');
+                    if (edad < 18) errores.push('Debes ser mayor de edad');
+                }
+            }
+
+            if (!sexo_usuario || !['M', 'F', 'O'].includes(sexo_usuario)) {
+                errores.push('El sexo es obligatorio (M, F, O)');
+            }
+
+            if (!acepta_aviso_privacidad || !acepta_terminos_condiciones) {
+                errores.push('Debes aceptar el aviso de privacidad y los términos y condiciones');
+            }
+
+            // Validar teléfono si se proporciona
+            if (numero_telefono !== undefined && numero_telefono !== null) {
+                const tel = String(numero_telefono).replace(/[^\d+]/g, '');
+                if (tel.length < 10 || tel.length > 15) {
+                    errores.push('El teléfono debe tener entre 10 y 15 dígitos');
+                }
+            }
+
+            if (errores.length > 0) {
+                return res.status(400).json({ errors: errores });
+            }
+
+            const ahora = new Date();
+
+            // Actualizar usuario
+            const { error: updateError } = await supabase
+                .schema('usuario')
+                .from('tUsuario')
+                .update({
+                    fecha_nacimiento,
+                    sexo_usuario,
+                    acepta_aviso_privacidad: true,
+                    fecha_aceptacion_aviso: ahora,
+                    acepta_terminos_condiciones: true,
+                    fecha_aceptacion_terminos: ahora,
+                    numero_telefono: numero_telefono || undefined,
+                    updated_at: ahora
+                })
+                .eq('id_usuario', userId);
+
+            if (updateError) {
+                await logError(req, updateError, 'AuthController', 'completeProfile', 'usuario', 'lAcceso', userId);
+                return res.status(500).json({ message: 'Error al actualizar el perfil' });
+            }
+
+            // Generar nuevos tokens SIN la bandera de perfil incompleto
+            const userData = await supabase
+                .schema('usuario')
+                .from('tUsuario')
+                .select('nombre_usuario, correo_electronico, id_rol_usuario')
+                .eq('id_usuario', userId)
+                .single();
+
+            const tokenPayload: TokenPayload = {
+                id_usuario: userId,
+                nombre_usuario: userData.data!.nombre_usuario,
+                correo_electronico: userData.data!.correo_electronico,
+                id_rol_usuario: userData.data!.id_rol_usuario,
+                requires_profile_completion: false
+            };
+
+            const accessToken = generateAccessToken(tokenPayload);
+
+            res.status(200).json({
+                message: 'Perfil completado exitosamente',
+                tokens: {
+                    access_token: accessToken,
+                    expires_in: process.env.JWT_ACCESS_EXPIRES_IN
+                }
+            });
+        } catch (err) {
+            await logError(req, err, 'AuthController', 'completeProfile', 'usuario', 'lAcceso');
+            res.status(500).json({ error: 'Error en el servidor' });
+        }
+    }
 
     /**
      * POST /api/auth/login
