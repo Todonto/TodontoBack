@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authController } from "../controllers/authController";
 import rateLimit from "express-rate-limit";
+import { authMiddleware } from "../middlewares/authMiddleware";
 
 const createLimiter = (minutes: number, max: number, message: string) =>
     rateLimit({
@@ -53,6 +54,11 @@ const refreshTokenLimiter = createLimiter(15,30,
     "Demasiadas solicitudes de sesión. Intenta más tarde."
 );
 
+// Google Login
+const googleLoginLimiter = createLimiter(10, 30,
+    "Demasiados intentos de inicio de sesión con Google. Intenta más tarde."
+);
+
 class AuthRoutes {
     public router: Router = Router();
 
@@ -62,6 +68,7 @@ class AuthRoutes {
 
     config(): void {
         this.router.post("/register", registerLimiter, authController.register);
+        this.router.post("/google", googleLoginLimiter, authController.googleLogin);
         this.router.post("/login", loginLimiter, authController.login);
         this.router.post("/send-verification-code", sendVerificationLimiter, authController.sendVerificationCode);
         this.router.post("/verify-email", verifyEmailLimiter, authController.verifyEmail );
@@ -69,6 +76,7 @@ class AuthRoutes {
         this.router.post("/verify-password-code", verifyPasswordCodeLimiter, authController.verifyPasswordCode);
         this.router.post("/reset-password", resetPasswordLimiter, authController.resetPassword);
         this.router.post("/refresh-token", refreshTokenLimiter, authController.refreshToken);
+        this.router.get("/profile", authMiddleware, authController.getProfile);
     }
 }
 

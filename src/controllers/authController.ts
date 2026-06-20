@@ -8,13 +8,14 @@ import { logAudit } from "../utils/logAudit";
 import jwt from 'jsonwebtoken';
 import supabase from "../database";
 import bcrypt from "bcrypt";
-
+import { OAuth2Client } from 'google-auth-library';
 class AuthController {
 
     constructor() {
         this.register = this.register.bind(this);
         this.login = this.login.bind(this);
         this.registrarIntentoFallido = this.registrarIntentoFallido.bind(this);
+        this.getProfile = this.getProfile.bind(this);
     }
 
     /**
@@ -187,6 +188,344 @@ class AuthController {
             res.status(500).json({ error: "Error en el servidor" });
         }
     }
+
+    /**
+     * POST /api/auth/google
+     * Registra o inicia sesión con Google OAuth
+     */
+    public async googleLogin(req: Request, res: Response) {
+        try {
+            const { id_token } = req.body;
+
+            if (!id_token || typeof id_token !== 'string') {
+                return res.status(400).json({ message: "Token de Google es requerido" });
+            }
+
+            // Validar que la variable de entorno exista
+            const googleClientId = process.env.GOOGLE_CLIENT_ID;
+            if (!googleClientId) {
+                return res.status(500).json({ message: "Error de configuración del servidor" });
+            }
+
+            // Verificar el token con Google
+            const client = new OAuth2Client(googleClientId);
+            let payload: any;
+            try {
+                const ticket = await client.verifyIdToken({
+                    idToken: id_token,
+                    audience: googleClientId,
+                });
+                payload = ticket.getPayload();
+            } catch {
+                return res.status(401).json({ message: "Token de Google inválido o expirado" });
+            }
+
+            if (!payload) {
+                return res.status(401).json({ message: "Token de Google inválido" });
+            }
+
+            const googleEmail = payload.email?.toLowerCase().trim();
+            const emailVerified = payload.email_verified === true;
+            const googleName = payload.name || '';
+            const googlePicture = payload.picture || null;
+
+            if (!googleEmail || !emailVerified) {
+                return res.status(400).json({ message: "El correo de Google no está verificado" });
+            }
+
+            // Buscar usuario por correo
+            const { data: existingUser, error: userError } = await supabase
+                .schema('usuario')
+                .from('tUsuario')
+                .select('id_usuario, nombre_usuario, apellido_paterno, apellido_materno, correo_verificado, id_rol_usuario, foto_perfil, tiene_cuenta_google')
+                .eq('correo_electronico', googleEmail)
+                .maybeSingle();
+
+            if (userError) {
+                await logError(req, userError, 'AuthController', 'googleLogin', 'usuario', 'lAcceso');
+                return res.status(500).json({ message: "Error al buscar usuario" });
+            }
+
+            let userId: number;
+            let nombreUsuario: string;
+            let rolUsuario: number;
+
+            const ahora = new Date();
+            const rawIp = (req.headers['x-forwarded-for'] as string || req.ip || req.socket.remoteAddress) as string;
+            const realIp = rawIp?.split(',')[0]?.trim().replace(/^::ffff:/, '') || '0.0.0.0';
+            const userAgent = req.headers['user-agent'] || 'Desconocido';
+
+            if (existingUser) {
+                userId = existingUser.id_usuario;
+                nombreUsuario = existingUser.nombre_usuario;
+                rolUsuario = existingUser.id_rol_usuario;
+
+                // Si el correo no estaba verificado, lo verificamos (porque Google lo garantiza)
+                if (!existingUser.correo_verificado) {
+                    await supabase
+                        .schema('usuario')
+                        .from('tUsuario')
+                        .update({ correo_verificado: true, updated_at: ahora })
+                        .eq('id_usuario', userId);
+                }
+
+                //Se actualiza foto de perfil si no tiene
+                if (googlePicture && !existingUser.foto_perfil) {
+                    await supabase
+                        .schema('usuario')
+                        .from('tUsuario')
+                        .update({ foto_perfil: googlePicture, updated_at: ahora })
+                        .eq('id_usuario', userId);
+                }
+
+                // Se actualiza el campo de google
+                if (existingUser && !existingUser.tiene_cuenta_google) {
+                    await supabase
+                        .schema('usuario')
+                        .from('tUsuario')
+                        .update({ tiene_cuenta_google: true, updated_at: ahora })
+                        .eq('id_usuario', existingUser.id_usuario);
+                }
+            } else {
+                // Separar nombre de Google (asumimos que todo es nombre, apellidos quedan vacíos)
+                const nombres = googleName.trim().split(' ');
+                const nombre = nombres[0] || 'Usuario';
+                const apellidoPaterno = nombres.length > 1 ? nombres.slice(1).join(' ') : 'Google';
+
+                // Insertar usuario (sin contraseña, con teléfono placeholder)
+                const { data: newUser, error: insertError } = await supabase
+                    .schema('usuario')
+                    .from('tUsuario')
+                    .insert({
+                        nombre_usuario: nombre,
+                        apellido_paterno: apellidoPaterno,
+                        apellido_materno: null,
+                        correo_electronico: googleEmail,
+                        foto_perfil: googlePicture,
+                        fecha_nacimiento: null,
+                        sexo_usuario: null,
+                        contrasena_hash: null,
+                        tiene_cuenta_google: true,
+                        correo_verificado: true,
+                        acepta_aviso_privacidad: true,
+                        fecha_aceptacion_aviso: ahora,
+                        acepta_terminos_condiciones: true,
+                        fecha_aceptacion_terminos: ahora,
+                        id_rol_usuario: Number(process.env.DEFAULT_ROLE_ID || 2),
+                        created_at: ahora
+                    })
+                    .select('id_usuario, nombre_usuario, id_rol_usuario')
+                    .single();
+
+                if (insertError) {
+                    await logError(req, insertError, 'AuthController', 'googleLogin_insert', 'usuario', 'lAcceso');
+                    if (insertError.message?.includes('duplicate key')) {
+                        return res.status(409).json({ message: "El correo ya está registrado" });
+                    }
+                    return res.status(500).json({ message: "Error al crear usuario" });
+                }
+
+                userId = newUser.id_usuario;
+                nombreUsuario = newUser.nombre_usuario;
+                rolUsuario = newUser.id_rol_usuario;
+
+                // Crear registro en tAcceso
+                await supabase
+                    .schema('usuario')
+                    .from('tAcceso')
+                    .insert({ id_usuario: userId });
+
+                // Asignar plan Inicio (gratuito)
+                const { data: planInicio } = await supabase
+                    .schema('usuario')
+                    .from('tTipoSuscripcion')
+                    .select('id_tipo_suscripcion')
+                    .eq('nombre', 'Inicio')
+                    .eq('activo', true)
+                    .single();
+
+                if (planInicio) {
+                    await supabase
+                        .schema('usuario')
+                        .from('tUsuarioSuscripcion')
+                        .insert({
+                            id_usuario: userId,
+                            id_tipo_suscripcion: planInicio.id_tipo_suscripcion,
+                            fecha_inicio: ahora,
+                            fecha_fin: null,
+                            estado: 'activa'
+                        });
+                }
+
+                await logAudit(req, 'REGISTER_GOOGLE', 'tUsuario', userId, { email: googleEmail });
+            }
+
+            // Se actualiza el control de acceso
+            await supabase
+                .schema('usuario')
+                .from('tAcceso')
+                .upsert({
+                    id_usuario: userId,
+                    ultimo_acceso: ahora,
+                    intentos_fallidos: 0,
+                    bloqueado_hasta: null,
+                    updated_at: ahora
+                }, { onConflict: 'id_usuario' });
+
+            // Se obtiene la suscripción activa para incluirla en la respuesta (si existe)
+            const { data: suscripcion } = await supabase
+                .schema('usuario')
+                .from('tUsuarioSuscripcion')
+                .select(`
+                    id_suscripcion,
+                    fecha_inicio,
+                    fecha_fin,
+                    estado,
+                    convertida_desde_prueba,
+                    cancelar_al_vencer,
+                    id_tipo_suscripcion,
+                    tTipoSuscripcion (
+                        nombre,
+                        descripcion,
+                        duracion_dias,
+                        precio,
+                        moneda,
+                        max_pacientes,
+                        max_citas_mes,
+                        max_recetas_mes,
+                        es_prueba,
+                        requiere_metodo_pago,
+                        stripe_price_id
+                    )
+                `)
+                .eq('id_usuario', userId)
+                .eq('estado', 'activa')
+                .maybeSingle();
+
+            // Parsear la información de suscripción
+            let suscripcionInfo = null;
+            if (suscripcion) {
+                const tipoData = Array.isArray(suscripcion.tTipoSuscripcion)
+                    ? suscripcion.tTipoSuscripcion[0]
+                    : suscripcion.tTipoSuscripcion;
+                suscripcionInfo = {
+                    id: suscripcion.id_suscripcion,
+                    tipo: tipoData?.nombre || null,
+                    descripcion: tipoData?.descripcion || null,
+                    duracion_dias: tipoData?.duracion_dias || null,
+                    precio: tipoData?.precio || null,
+                    moneda: tipoData?.moneda || null,
+                    fecha_inicio: suscripcion.fecha_inicio,
+                    fecha_fin: suscripcion.fecha_fin,
+                    estado: suscripcion.estado,
+                    vigente: suscripcion.fecha_fin ? new Date(suscripcion.fecha_fin) > new Date() : true,
+                    max_pacientes: tipoData?.max_pacientes,
+                    max_citas_mes: tipoData?.max_citas_mes,
+                    max_recetas_mes: tipoData?.max_recetas_mes,
+                    es_prueba: tipoData?.es_prueba,
+                    requiere_metodo_pago: tipoData?.requiere_metodo_pago,
+                    cancelar_al_vencer: suscripcion.cancelar_al_vencer
+                };
+            }
+
+            // Generar tokens y sesión
+            const tokenPayload: TokenPayload = {
+                id_usuario: userId,
+                nombre_usuario: nombreUsuario,
+                correo_electronico: googleEmail,
+                id_rol_usuario: rolUsuario
+            };
+
+            const accessToken = generateAccessToken(tokenPayload);
+            const refreshToken = generateRefreshToken(tokenPayload);
+            const refreshTokenHash = await hashRefreshToken(refreshToken);
+            const expiresAt = getRefreshTokenExpiry();
+
+            // Control de sesiones máximas
+            const MAX_ACTIVE_SESSIONS = 3;
+            const { count, error: countError } = await supabase
+                .schema('usuario')
+                .from('tSesion')
+                .select('*', { count: 'exact', head: true })
+                .eq('id_usuario', userId)
+                .eq('revoked', false)
+                .gt('expires_at', ahora.toISOString());
+
+            if (countError) {
+                await logError(req, countError, 'AuthController', 'googleLogin_count', 'usuario', 'lAcceso', userId);
+            }
+
+            if (count && count >= MAX_ACTIVE_SESSIONS) {
+                const sessionsToRevoke = count - MAX_ACTIVE_SESSIONS + 1;
+                const { data: oldestSessions } = await supabase
+                    .schema('usuario')
+                    .from('tSesion')
+                    .select('id_sesion')
+                    .eq('id_usuario', userId)
+                    .eq('revoked', false)
+                    .gt('expires_at', ahora.toISOString())
+                    .order('created_at', { ascending: true })
+                    .limit(sessionsToRevoke);
+
+                if (oldestSessions && oldestSessions.length > 0) {
+                    const idsToRevoke = oldestSessions.map(s => s.id_sesion);
+                    await supabase
+                        .schema('usuario')
+                        .from('tSesion')
+                        .update({ revoked: true, revoked_at: ahora })
+                        .in('id_sesion', idsToRevoke);
+                }
+            }
+
+            // Insertar nueva sesión
+            const { error: sessionError } = await supabase
+                .schema('usuario')
+                .from('tSesion')
+                .insert({
+                    id_usuario: userId,
+                    refresh_token_hash: refreshTokenHash,
+                    ip_address: realIp,
+                    user_agent: userAgent,
+                    expires_at: expiresAt,
+                    revoked: false
+                });
+
+            if (sessionError) {
+                await logError(req, sessionError, 'AuthController', 'googleLogin_session', 'usuario', 'lAcceso', userId);
+                return res.status(500).json({ message: "Error al iniciar sesión" });
+            }
+
+            await logAudit(req, 'LOGIN_GOOGLE', 'tUsuario', userId, { email: googleEmail });
+
+            // Cookie con refresh token
+            res.cookie('refresh_token', refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                path: '/api/auth/refresh-token',
+                maxAge: 30 * 24 * 60 * 60 * 1000
+            });
+
+            res.status(200).json({
+                message: "Inicio de sesión con Google exitoso",
+                user: {
+                    id: userId,
+                    nombre_usuario: nombreUsuario,
+                    correo_electronico: googleEmail,
+                    suscripcion: suscripcionInfo
+                },
+                tokens: {
+                    access_token: accessToken,
+                    expires_in: process.env.JWT_ACCESS_EXPIRES_IN
+                }
+            });
+
+        } catch (err: any) {
+            await logError(req, err, 'AuthController', 'googleLogin', 'usuario', 'lAcceso');
+            res.status(500).json({ error: "Error en el servidor" });
+        }
+    }
+
 
     /**
      * POST /api/auth/login
@@ -1226,6 +1565,36 @@ class AuthController {
         } catch (err: any) {
             await logError(req, err, 'AuthController', 'refreshToken', 'usuario', 'lAcceso');
             res.status(500).json({ error: "Error en el servidor" });
+        }
+    }
+
+    /**
+     * GET /api/auth/profile
+     * Obtiene el perfil del usuario autenticado.
+     */
+    public async getProfile(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user?.id_usuario;
+            if (!userId) {
+                return res.status(401).json({ message: 'No autorizado' });
+            }
+
+            const { data: user, error } = await supabase
+                .schema('usuario')
+                .from('tUsuario')
+                .select('nombre_usuario, apellido_paterno, apellido_materno, correo_electronico, foto_perfil, numero_telefono, fecha_nacimiento, sexo_usuario')
+                .eq('id_usuario', userId)
+                .maybeSingle();
+
+            if (error || !user) {
+                await logError(req, error || new Error('Usuario no encontrado'), 'AuthController', 'getProfile', 'usuario', 'lAcceso', userId);
+                return res.status(500).json({ message: 'Error al obtener perfil' });
+            }
+
+            res.status(200).json({ user });
+        } catch (err) {
+            await logError(req, err, 'AuthController', 'getProfile', 'usuario', 'lAcceso');
+            res.status(500).json({ error: 'Error en el servidor' });
         }
     }
 
