@@ -2,8 +2,9 @@ import express, { Application } from "express";
 import morgan from "morgan";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import AuthRoutes from "./routes/authRoute";
+import AuthRoutes from "./routes/authRoutes";
 import SubscribeRoutes from "./routes/subscribeRoutes";
+import DoctorRoutes from "./routes/doctorRoutes";
 import { webHookController } from "./controllers/webhookController";
 
 class Server {
@@ -43,6 +44,7 @@ class Server {
     routes() : void {
         this.app.use("/api/auth", AuthRoutes);
         this.app.use("/api/sub", SubscribeRoutes);
+        this.app.use("/api/doc", DoctorRoutes);
     }
 
     start(): void {
