@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import AuthRoutes from "./routes/authRoutes";
 import SubscribeRoutes from "./routes/subscribeRoutes";
 import DoctorRoutes from "./routes/doctorRoutes";
+import PatientRoutes from "./routes/patientRoutes";
 import { webHookController } from "./controllers/webhookController";
 
 class Server {
@@ -45,6 +46,7 @@ class Server {
         this.app.use("/api/auth", AuthRoutes);
         this.app.use("/api/sub", SubscribeRoutes);
         this.app.use("/api/doc", DoctorRoutes);
+        this.app.use("/api/pat", PatientRoutes)
     }
 
     start(): void {
