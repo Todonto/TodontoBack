@@ -545,3 +545,6 @@ Authorization: Bearer {access_token}
 - resetPassword(): Cambia contraseña e invalida todas las sesiones
 - refreshToken(): Rota el refresh token y emite nuevos JWT
 - registrarIntentoFallido(): Helper privado para bloqueo por intentos
+- googleLogin(): Inicia sesión o registra un usuario usando Google OAuth (devuelve requires_profile_completion cuando faltan datos)
+- completeProfile(): Completa los datos obligatorios (fecha nacimiento, sexo, términos) para usuarios que inician con Google
+- getProfile(): Devuelve los datos del perfil del usuario autenticado

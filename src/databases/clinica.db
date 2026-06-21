@@ -509,69 +509,59 @@ $$ LANGUAGE plpgsql STABLE;
 
 
 CREATE OR REPLACE FUNCTION clinica.crear_cita_con_paciente(
-    -- Datos del doctor (obligatorio, ya que es su agenda)
-    _id_doctor INT,
-    
-    -- Datos de la cita
-    _fecha_hora_inicio TIMESTAMP,
-    _fecha_hora_fin TIMESTAMP,
-    _id_tratamiento INT DEFAULT NULL,
-    _estado VARCHAR DEFAULT 'programada',
-    _tipo_cita VARCHAR DEFAULT NULL,
-    _notas TEXT DEFAULT NULL,
-    _color VARCHAR DEFAULT NULL,
-    
-    -- Datos del paciente: o bien un id existente...
-    _id_paciente INT DEFAULT NULL,
-    -- ...o bien datos para crear uno nuevo (mínimo nombre y teléfono)
-    _nombre_nuevo VARCHAR DEFAULT NULL,
-    _telefono_principal_nuevo VARCHAR DEFAULT NULL,
-    _correo_nuevo VARCHAR DEFAULT NULL
+    p_id_doctor INT,
+    p_fecha_hora_inicio TIMESTAMP,
+    p_fecha_hora_fin TIMESTAMP,
+    p_id_tratamiento INT DEFAULT NULL,
+    p_estado VARCHAR DEFAULT 'programada',
+    p_tipo_cita VARCHAR DEFAULT NULL,
+    p_notas TEXT DEFAULT NULL,
+    p_color VARCHAR DEFAULT NULL,
+    p_id_paciente INT DEFAULT NULL,
+    p_nombre_nuevo VARCHAR DEFAULT NULL,
+    p_telefono_principal_nuevo VARCHAR DEFAULT NULL,
+    p_correo_nuevo VARCHAR DEFAULT NULL
 )
 RETURNS TABLE (id_cita INT, id_paciente INT) AS $$
 DECLARE
     v_id_paciente INT;
     v_id_cita INT;
 BEGIN
-    -- Validación básica: o se proporciona un id_paciente existente, o los datos para crear uno nuevo.
-    IF _id_paciente IS NULL THEN
-        IF _nombre_nuevo IS NULL OR _telefono_principal_nuevo IS NULL THEN
+    IF p_id_paciente IS NULL THEN
+        IF p_nombre_nuevo IS NULL OR p_telefono_principal_nuevo IS NULL THEN
             RAISE EXCEPTION 'Debe proporcionar un id_paciente o al menos nombre y teléfono para un nuevo paciente.';
         END IF;
-        
-        -- Crear el nuevo paciente usando la función ya existente
+
         v_id_paciente := clinica.crear_paciente(
-            _id_doctor,
-            _nombre_nuevo,
-            _telefono_principal_nuevo,
-            _correo_electronico := _correo_nuevo   -- el resto de parámetros tomarán sus valores por defecto
+            p_id_doctor,
+            p_nombre_nuevo,
+            p_telefono_principal_nuevo,
+            _correo_electronico := p_correo_nuevo
         );
     ELSE
-        -- Verificar que el paciente exista y pertenezca al doctor (si quieres forzar esa restricción)
-        SELECT id_paciente INTO v_id_paciente
-        FROM clinica."tPaciente"
-        WHERE id_paciente = _id_paciente AND id_doctor = _id_doctor;
-        
+        SELECT pac.id_paciente INTO v_id_paciente
+        FROM clinica."tPaciente" pac
+        WHERE pac.id_paciente = p_id_paciente AND pac.id_doctor = p_id_doctor;
+
         IF v_id_paciente IS NULL THEN
             RAISE EXCEPTION 'Paciente inexistente o no pertenece a este doctor.';
         END IF;
     END IF;
-    
-    -- Insertar la cita
+
     INSERT INTO clinica."tCita" (
         id_paciente, id_doctor, id_tratamiento,
         fecha_hora_inicio, fecha_hora_fin,
         estado, tipo_cita, notas, color
     ) VALUES (
-        v_id_paciente, _id_doctor, _id_tratamiento,
-        _fecha_hora_inicio, _fecha_hora_fin,
-        _estado, _tipo_cita, _notas, _color
+        v_id_paciente, p_id_doctor, p_id_tratamiento,
+        p_fecha_hora_inicio, p_fecha_hora_fin,
+        p_estado, p_tipo_cita, p_notas, p_color
     )
-    RETURNING tCita.id_cita INTO v_id_cita;
-    
+    RETURNING clinica."tCita".id_cita INTO v_id_cita;
+
     RETURN QUERY SELECT v_id_cita, v_id_paciente;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
 -- Triggers

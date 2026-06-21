@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import supabase from "../database";
 import bcrypt from "bcrypt";
 import { OAuth2Client } from 'google-auth-library';
+
 class AuthController {
 
     constructor() {
