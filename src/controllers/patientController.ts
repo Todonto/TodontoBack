@@ -90,6 +90,7 @@ function validarTexto(
 }
 
 class PatientController {
+
     constructor() {
         this.crearPaciente = this.crearPaciente.bind(this);
         this.crearCita = this.crearCita.bind(this);
@@ -97,6 +98,23 @@ class PatientController {
         this.obtenerPaciente = this.obtenerPaciente.bind(this);
         this.actualizarPaciente = this.actualizarPaciente.bind(this);
         this.desactivarPaciente = this.desactivarPaciente.bind(this);
+
+        this.listarDocumentos = this.listarDocumentos.bind(this);
+        this.obtenerDocumento = this.obtenerDocumento.bind(this);
+        this.actualizarDocumento = this.actualizarDocumento.bind(this);
+        this.eliminarDocumento = this.eliminarDocumento.bind(this);
+
+        this.obtenerHistoriaDental = this.obtenerHistoriaDental.bind(this);
+        this.actualizarHistoriaDental = this.actualizarHistoriaDental.bind(this);
+        this.obtenerHistoriaMedica = this.obtenerHistoriaMedica.bind(this);
+        this.actualizarHistoriaMedica = this.actualizarHistoriaMedica.bind(this);
+
+        this.crearNotaClinica = this.crearNotaClinica.bind(this);
+        this.listarNotasClinicas = this.listarNotasClinicas.bind(this);
+        this.obtenerNotaClinica = this.obtenerNotaClinica.bind(this);
+        this.actualizarNotaClinica = this.actualizarNotaClinica.bind(this);
+        this.eliminarNotaClinica = this.eliminarNotaClinica.bind(this);
+
     }
 
     /**
@@ -759,7 +777,8 @@ class PatientController {
 
     /**
      * POST /api/pat/documents
-     * Sube uno o varios documentos para un paciente, vinculándolos opcionalmente a una cita.
+     * Sube uno o varios documentos para un paciente,
+     * vinculándolos opcionalmente a una cita.
      * Campos esperados (multipart/form-data):
      *  - id_paciente (obligatorio)
      *  - id_cita (opcional)
@@ -916,6 +935,1107 @@ class PatientController {
                 res.status(500).json({ message: "Error interno del servidor." });
             }
         });
+    }
+
+    /**
+     * GET /api/pat/:id/documents
+     * Lista los documentos de un paciente, con filtros opcionales
+     * por cita y categoría.
+     */
+    public async listarDocumentos(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) return res.status(401).json({ message: "No autorizado" });
+
+            const { id } = req.params;
+            if (!id) return res.status(400).json({ message: "ID de paciente requerido." });
+            const idString = Array.isArray(id) ? id[0] : id;
+            const idPaciente = parseInt(idString!, 10);
+            if (isNaN(idPaciente)) return res.status(400).json({ message: "ID de paciente inválido." });
+
+            // Verificar pertenencia del paciente
+            const { data: paciente } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+            if (!paciente) return res.status(404).json({ message: "Paciente no encontrado o no pertenece a este doctor." });
+
+            let query = supabase
+                .schema('clinica')
+                .from('tDocumentoPaciente')
+                .select('*')
+                .eq('id_paciente', idPaciente)
+                .order('fecha_subida', { ascending: false });
+
+            // Filtro por cita
+            const { cita } = req.query;
+            if (cita !== undefined) {
+                const citaStr = Array.isArray(cita) ? cita[0] : cita;
+                const idCita = parseInt(citaStr as string, 10);
+                if (isNaN(idCita)) return res.status(400).json({ message: "El parámetro 'cita' debe ser un ID numérico." });
+                query = query.eq('id_cita', idCita);
+            }
+
+            // Filtro por categoría
+            const { categoria } = req.query;
+            if (categoria !== undefined) {
+                const catStr = Array.isArray(categoria) ? categoria[0] : categoria;
+                const idCategoria = parseInt(catStr as string, 10);
+                if (isNaN(idCategoria)) return res.status(400).json({ message: "El parámetro 'categoria' debe ser un ID numérico." });
+                query = query.eq('id_categoria', idCategoria);
+            }
+
+            const { data: documentos, error } = await query;
+
+            if (error) {
+                await logError(req, error, 'PatientController', 'listarDocumentos', 'clinica', 'lDoctor', doctorId);
+                return res.status(500).json({ message: "Error al obtener documentos." });
+            }
+
+            res.status(200).json({ documentos });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'listarDocumentos', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
+    }
+
+    /**
+     * GET /api/pat/:id/documents/:docId
+     * Obtiene un documento específico de un paciente.
+     */
+    public async obtenerDocumento(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) return res.status(401).json({ message: "No autorizado" });
+
+            const { id, docId } = req.params;
+            const idPaciente = parseInt(id as string, 10);
+            const idDocumento = parseInt(docId as string, 10);
+            if (isNaN(idPaciente) || isNaN(idDocumento)) return res.status(400).json({ message: "ID de paciente o documento inválido." });
+
+            const { data: paciente } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+            if (!paciente) return res.status(404).json({ message: "Paciente no encontrado o no pertenece a este doctor." });
+
+            const { data: documento, error } = await supabase
+                .schema('clinica')
+                .from('tDocumentoPaciente')
+                .select('*')
+                .eq('id_documento', idDocumento)
+                .eq('id_paciente', idPaciente)
+                .maybeSingle();
+
+            if (error || !documento) return res.status(404).json({ message: "Documento no encontrado." });
+
+            res.status(200).json({ documento });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'obtenerDocumento', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
+    }
+
+    /**
+     * PUT /api/pat/:id/documents/:docId
+     * Actualiza metadatos de un documento (descripción, categoría, cita).
+     */
+    public async actualizarDocumento(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) return res.status(401).json({ message: "No autorizado" });
+
+            const { id, docId } = req.params;
+            const idPaciente = parseInt(id as string, 10);
+            const idDocumento = parseInt(docId as string, 10);
+            if (isNaN(idPaciente) || isNaN(idDocumento)) return res.status(400).json({ message: "ID inválido." });
+
+            const { data: paciente } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+            if (!paciente) return res.status(404).json({ message: "Paciente no encontrado." });
+
+            const { data: docExistente } = await supabase
+                .schema('clinica')
+                .from('tDocumentoPaciente')
+                .select('id_documento')
+                .eq('id_documento', idDocumento)
+                .eq('id_paciente', idPaciente)
+                .maybeSingle();
+            if (!docExistente) return res.status(404).json({ message: "Documento no encontrado." });
+
+            const { id_cita, id_categoria, descripcion } = req.body;
+
+            const datosActualizar: any = {};
+            const errores: string[] = [];
+
+            if (id_cita !== undefined) {
+                if (id_cita === null) {
+                    datosActualizar.id_cita = null;
+                } else if (typeof id_cita !== 'number' || id_cita <= 0) {
+                    errores.push("ID de cita inválido.");
+                } else {
+                    const { data: cita } = await supabase
+                        .schema('clinica')
+                        .from('tCita')
+                        .select('id_cita, id_paciente')
+                        .eq('id_cita', id_cita)
+                        .eq('id_doctor', doctorId)
+                        .maybeSingle();
+                    if (!cita) errores.push("Cita no encontrada o no pertenece a este doctor.");
+                    else if (cita.id_paciente !== idPaciente) errores.push("La cita no corresponde al paciente indicado.");
+                    else datosActualizar.id_cita = id_cita;
+                }
+            }
+
+            if (id_categoria !== undefined) {
+                if (id_categoria === null) {
+                    datosActualizar.id_categoria = null;
+                } else if (typeof id_categoria !== 'number' || id_categoria <= 0) {
+                    errores.push("ID de categoría inválido.");
+                } else {
+                    const { data: categoria } = await supabase
+                        .schema('clinica')
+                        .from('tCategoriaDocumento')
+                        .select('id_categoria')
+                        .eq('id_categoria', id_categoria)
+                        .maybeSingle();
+                    if (!categoria) errores.push("Categoría no válida.");
+                    else datosActualizar.id_categoria = id_categoria;
+                }
+            }
+
+            if (descripcion !== undefined) {
+                if (descripcion === null || descripcion === '') {
+                    datosActualizar.descripcion = null;
+                } else if (typeof descripcion === 'string') {
+                    if (descripcion.trim().length > 500) errores.push("La descripción no puede exceder 500 caracteres.");
+                    else datosActualizar.descripcion = descripcion.trim();
+                } else {
+                    errores.push("La descripción debe ser un texto.");
+                }
+            }
+
+            if (errores.length > 0) return res.status(400).json({ errors: errores });
+            if (Object.keys(datosActualizar).length === 0) return res.status(400).json({ message: "No se enviaron campos para actualizar." });
+
+            const { data: actualizado, error } = await supabase
+                .schema('clinica')
+                .from('tDocumentoPaciente')
+                .update(datosActualizar)
+                .eq('id_documento', idDocumento)
+                .select('*')
+                .single();
+
+            if (error) {
+                await logError(req, error, 'PatientController', 'actualizarDocumento', 'clinica', 'lDoctor', doctorId);
+                return res.status(500).json({ message: "Error al actualizar el documento." });
+            }
+
+            res.status(200).json({ message: "Documento actualizado exitosamente.", documento: actualizado });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'actualizarDocumento', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
+    }
+
+    /**
+     * DELETE /api/pat/:id/documents/:docId
+     * Elimina permanentemente un documento, incluyendo el archivo en Supabase Storage.
+     */
+    public async eliminarDocumento(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) return res.status(401).json({ message: "No autorizado" });
+
+            const { id, docId } = req.params;
+            const idPaciente = parseInt(id as string, 10);
+            const idDocumento = parseInt(docId as string, 10);
+            if (isNaN(idPaciente) || isNaN(idDocumento)) return res.status(400).json({ message: "ID inválido." });
+
+            const { data: paciente } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+            if (!paciente) return res.status(404).json({ message: "Paciente no encontrado." });
+
+            // Obtener el documento para conocer la ruta del archivo
+            const { data: doc, error: fetchError } = await supabase
+                .schema('clinica')
+                .from('tDocumentoPaciente')
+                .select('*')
+                .eq('id_documento', idDocumento)
+                .eq('id_paciente', idPaciente)
+                .maybeSingle();
+            if (fetchError || !doc) return res.status(404).json({ message: "Documento no encontrado." });
+
+            // Eliminar archivo de Storage
+            if (doc.ruta_almacenamiento) {
+                try {
+                    const url = new URL(doc.ruta_almacenamiento);
+                    const pathParts = url.pathname.split('/');
+                    // La URL pública es /storage/v1/object/public/<bucket>/<path>
+                    const bucketIndex = pathParts.indexOf('clinica-imagenes');
+                    if (bucketIndex !== -1) {
+                        const filePath = pathParts.slice(bucketIndex + 1).join('/');
+                        const { error: deleteStorageError } = await supabase
+                            .storage
+                            .from('clinica-imagenes')
+                            .remove([filePath]);
+                        if (deleteStorageError) {
+                            console.warn('Error al eliminar archivo de Storage:', deleteStorageError.message);
+                        }
+                    }
+                } catch {
+                    console.warn('No se pudo parsear la URL del documento:', doc.ruta_almacenamiento);
+                }
+            }
+
+            // Eliminar registro de BD
+            const { error: deleteError } = await supabase
+                .schema('clinica')
+                .from('tDocumentoPaciente')
+                .delete()
+                .eq('id_documento', idDocumento);
+
+            if (deleteError) {
+                await logError(req, deleteError, 'PatientController', 'eliminarDocumento', 'clinica', 'lDoctor', doctorId);
+                return res.status(500).json({ message: "Error al eliminar el documento." });
+            }
+
+            res.status(200).json({ message: "Documento eliminado correctamente." });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'eliminarDocumento', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
+    }
+
+    /**
+     * GET /api/pat/:id/dental-history
+     * Obtiene la historia dental de un paciente del doctor autenticado.
+     */
+    public async obtenerHistoriaDental(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) {
+                return res.status(401).json({ message: "No autorizado" });
+            }
+
+            const { id } = req.params;
+            if (!id) {
+                return res.status(400).json({ message: "ID de paciente requerido." });
+            }
+            const idString = Array.isArray(id) ? id[0] : id;
+            const idPaciente = parseInt(idString!, 10);
+            if (isNaN(idPaciente)) {
+                return res.status(400).json({ message: "ID de paciente inválido." });
+            }
+
+            // Verificar que el paciente pertenezca al doctor
+            const { data: paciente, error: pacError } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+
+            if (pacError || !paciente) {
+                return res.status(404).json({ message: "Paciente no encontrado o no pertenece a este doctor." });
+            }
+
+            const { data: historia, error } = await supabase
+                .schema('clinica')
+                .from('tHistoriaDental')
+                .select('*')
+                .eq('id_paciente', idPaciente)
+                .maybeSingle();
+
+            if (error) {
+                await logError(req, error, 'PatientController', 'obtenerHistoriaDental', 'clinica', 'lDoctor', doctorId);
+                return res.status(500).json({ message: "Error al obtener la historia dental." });
+            }
+
+            if (!historia) {
+                return res.status(404).json({ message: "Historia dental no encontrada para este paciente." });
+            }
+
+            res.status(200).json({ historia_dental: historia });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'obtenerHistoriaDental', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
+    }
+
+    /**
+     * PUT /api/pat/:id/dental-history
+     * Actualiza la historia dental de un paciente del doctor autenticado.
+     * Solo los campos enviados serán modificados (actualización parcial).
+     */
+    public async actualizarHistoriaDental(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) {
+                return res.status(401).json({ message: "No autorizado" });
+            }
+
+            const { id } = req.params;
+            if (!id) {
+                return res.status(400).json({ message: "ID de paciente requerido." });
+            }
+            const idString = Array.isArray(id) ? id[0] : id;
+            const idPaciente = parseInt(idString!, 10);
+            if (isNaN(idPaciente)) {
+                return res.status(400).json({ message: "ID de paciente inválido." });
+            }
+
+            // Verificar que el paciente pertenezca al doctor
+            const { data: paciente, error: pacError } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+
+            if (pacError || !paciente) {
+                return res.status(404).json({ message: "Paciente no encontrado o no pertenece a este doctor." });
+            }
+
+            // Verificar que exista la historia dental
+            const { data: historia, error: histError } = await supabase
+                .schema('clinica')
+                .from('tHistoriaDental')
+                .select('id_historia_dental')
+                .eq('id_paciente', idPaciente)
+                .maybeSingle();
+
+            if (histError || !historia) {
+                return res.status(404).json({ message: "Historia dental no encontrada para este paciente." });
+            }
+
+            // Extraer campos del body
+            const {
+                motivo_consulta,
+                cepillado_frecuencia,
+                extracciones_previas,
+                ultima_visita
+            } = req.body;
+
+            const datosActualizar: any = {};
+            const errores: string[] = [];
+
+            // Validaciones
+            if (motivo_consulta !== undefined) {
+                if (motivo_consulta === null || motivo_consulta === '') {
+                    datosActualizar.motivo_consulta = null;
+                } else if (typeof motivo_consulta === 'string') {
+                    if (motivo_consulta.trim().length > 500) errores.push('El motivo de consulta no puede exceder 500 caracteres.');
+                    else datosActualizar.motivo_consulta = motivo_consulta.trim();
+                } else {
+                    errores.push('El motivo de consulta debe ser un texto.');
+                }
+            }
+
+            // cepillado_frecuencia: solo valores permitidos
+            if (cepillado_frecuencia !== undefined) {
+                const permitidos = ['1 vez', '2 veces', '3 o más'];
+                if (cepillado_frecuencia === null || cepillado_frecuencia === '') {
+                    datosActualizar.cepillado_frecuencia = null;
+                } else if (!permitidos.includes(cepillado_frecuencia)) {
+                    errores.push('Frecuencia de cepillado inválida. Use: 1 vez, 2 veces, 3 o más.');
+                } else {
+                    datosActualizar.cepillado_frecuencia = cepillado_frecuencia;
+                }
+            }
+
+            // Campos booleanos
+            const booleanFields = [
+                'usa_hilo_dental', 'usa_enjuague', 'bruxismo', 'muerde_unas',
+                'respiracion_bucal', 'tratamiento_ortodoncia', 'cirugia_oral',
+                'sensibilidad_dental', 'sangrado_encias', 'dolor_articulacion'
+            ];
+            for (const field of booleanFields) {
+                const val = (req.body as any)[field];
+                if (val !== undefined) {
+                    if (typeof val !== 'boolean') errores.push(`El campo ${field} debe ser booleano (true/false).`);
+                    else datosActualizar[field] = val;
+                }
+            }
+
+            // extracciones_previas: texto libre opcional, max 500
+            if (extracciones_previas !== undefined) {
+                if (extracciones_previas === null || extracciones_previas === '') {
+                    datosActualizar.extracciones_previas = null;
+                } else if (typeof extracciones_previas === 'string') {
+                    if (extracciones_previas.trim().length > 500) errores.push('Extracciones previas no puede exceder 500 caracteres.');
+                    else datosActualizar.extracciones_previas = extracciones_previas.trim();
+                } else {
+                    errores.push('Extracciones previas debe ser un texto.');
+                }
+            }
+
+            // ultima_visita: fecha opcional
+            if (ultima_visita !== undefined) {
+                if (ultima_visita === null || ultima_visita === '') {
+                    datosActualizar.ultima_visita = null;
+                } else if (typeof ultima_visita === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ultima_visita)) {
+                    const fecha = new Date(ultima_visita);
+                    if (isNaN(fecha.getTime())) errores.push('Fecha de última visita no válida.');
+                    else if (fecha > new Date()) errores.push('La última visita no puede ser futura.');
+                    else datosActualizar.ultima_visita = ultima_visita;
+                } else {
+                    errores.push('Formato de fecha inválido para última visita (YYYY-MM-DD).');
+                }
+            }
+
+            if (errores.length > 0) {
+                return res.status(400).json({ errors: errores });
+            }
+
+            if (Object.keys(datosActualizar).length === 0) {
+                return res.status(400).json({ message: "No se enviaron campos para actualizar." });
+            }
+
+            // Actualizar fecha de actualización
+            datosActualizar.fecha_actualizacion = new Date();
+
+            const { data: actualizado, error: updateError } = await supabase
+                .schema('clinica')
+                .from('tHistoriaDental')
+                .update(datosActualizar)
+                .eq('id_paciente', idPaciente)
+                .select('*')
+                .single();
+
+            if (updateError) {
+                await logError(req, updateError, 'PatientController', 'actualizarHistoriaDental', 'clinica', 'lDoctor', doctorId);
+                return res.status(500).json({ message: "Error al actualizar la historia dental." });
+            }
+
+            res.status(200).json({
+                message: "Historia dental actualizada exitosamente.",
+                historia_dental: actualizado
+            });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'actualizarHistoriaDental', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
+    }
+
+    /**
+     * GET /api/pat/:id/medical-history
+     * Obtiene la historia médica de un paciente del doctor autenticado.
+     */
+    public async obtenerHistoriaMedica(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) {
+                return res.status(401).json({ message: "No autorizado" });
+            }
+
+            const { id } = req.params;
+            if (!id) {
+                return res.status(400).json({ message: "ID de paciente requerido." });
+            }
+            const idString = Array.isArray(id) ? id[0] : id;
+            const idPaciente = parseInt(idString!, 10);
+            if (isNaN(idPaciente)) {
+                return res.status(400).json({ message: "ID de paciente inválido." });
+            }
+
+            // Verificar que el paciente pertenezca al doctor
+            const { data: paciente, error: pacError } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+
+            if (pacError || !paciente) {
+                return res.status(404).json({ message: "Paciente no encontrado o no pertenece a este doctor." });
+            }
+
+            const { data: historia, error } = await supabase
+                .schema('clinica')
+                .from('tHistoriaMedica')
+                .select('*')
+                .eq('id_paciente', idPaciente)
+                .maybeSingle();
+
+            if (error) {
+                await logError(req, error, 'PatientController', 'obtenerHistoriaMedica', 'clinica', 'lDoctor', doctorId);
+                return res.status(500).json({ message: "Error al obtener la historia médica." });
+            }
+
+            if (!historia) {
+                return res.status(404).json({ message: "Historia médica no encontrada para este paciente." });
+            }
+
+            res.status(200).json({ historia_medica: historia });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'obtenerHistoriaMedica', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
+    }
+
+    /**
+     * PUT /api/pat/:id/medical-history
+     * Actualiza la historia médica de un paciente del doctor autenticado.
+     * Solo los campos enviados serán modificados (actualización parcial).
+     */
+    public async actualizarHistoriaMedica(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) {
+                return res.status(401).json({ message: "No autorizado" });
+            }
+
+            const { id } = req.params;
+            if (!id) {
+                return res.status(400).json({ message: "ID de paciente requerido." });
+            }
+            const idString = Array.isArray(id) ? id[0] : id;
+            const idPaciente = parseInt(idString!, 10);
+            if (isNaN(idPaciente)) {
+                return res.status(400).json({ message: "ID de paciente inválido." });
+            }
+
+            // Verificar que el paciente pertenezca al doctor
+            const { data: paciente, error: pacError } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+
+            if (pacError || !paciente) {
+                return res.status(404).json({ message: "Paciente no encontrado o no pertenece a este doctor." });
+            }
+
+            // Verificar que exista la historia médica
+            const { data: historia, error: histError } = await supabase
+                .schema('clinica')
+                .from('tHistoriaMedica')
+                .select('id_historia_medica')
+                .eq('id_paciente', idPaciente)
+                .maybeSingle();
+
+            if (histError || !historia) {
+                return res.status(404).json({ message: "Historia médica no encontrada para este paciente." });
+            }
+
+            // Extraer campos del body
+            const {
+                otras_enfermedades, medicamentos_actuales,
+                alergias_detalle, cirugias_previas, hospitalizaciones,
+                fuma, alcohol
+            } = req.body;
+
+            const datosActualizar: any = {};
+            const errores: string[] = [];
+
+            // Campos booleanos
+            const booleanFields = [
+                'diabetes', 'hipertension', 'cardiopatia', 'epilepsia',
+                'hepatitis', 'vih', 'tuberculosis', 'asma',
+                'alergias_medicamentos', 'alergias_anestesicos', 'embarazo',
+                'transfusiones', 'drogas'
+            ];
+            for (const field of booleanFields) {
+                const val = (req.body as any)[field];
+                if (val !== undefined) {
+                    if (typeof val !== 'boolean') errores.push(`El campo ${field} debe ser booleano (true/false).`);
+                    else datosActualizar[field] = val;
+                }
+            }
+
+            // Campos de texto libre (máximo 500 caracteres)
+            const textFields: { field: string; value: any }[] = [
+                { field: 'otras_enfermedades', value: otras_enfermedades },
+                { field: 'medicamentos_actuales', value: medicamentos_actuales },
+                { field: 'alergias_detalle', value: alergias_detalle },
+                { field: 'cirugias_previas', value: cirugias_previas },
+                { field: 'hospitalizaciones', value: hospitalizaciones },
+                { field: 'fuma', value: fuma },
+                { field: 'alcohol', value: alcohol }
+            ];
+
+            for (const { field, value } of textFields) {
+                if (value !== undefined) {
+                    if (value === null || value === '') {
+                        datosActualizar[field] = null;
+                    } else if (typeof value === 'string') {
+                        if (value.trim().length > 500) errores.push(`El campo ${field} no puede exceder 500 caracteres.`);
+                        else datosActualizar[field] = value.trim();
+                    } else {
+                        errores.push(`El campo ${field} debe ser un texto.`);
+                    }
+                }
+            }
+
+            if (errores.length > 0) {
+                return res.status(400).json({ errors: errores });
+            }
+
+            if (Object.keys(datosActualizar).length === 0) {
+                return res.status(400).json({ message: "No se enviaron campos para actualizar." });
+            }
+
+            // Actualizar fecha de actualización
+            datosActualizar.fecha_actualizacion = new Date();
+
+            const { data: actualizado, error: updateError } = await supabase
+                .schema('clinica')
+                .from('tHistoriaMedica')
+                .update(datosActualizar)
+                .eq('id_paciente', idPaciente)
+                .select('*')
+                .single();
+
+            if (updateError) {
+                await logError(req, updateError, 'PatientController', 'actualizarHistoriaMedica', 'clinica', 'lDoctor', doctorId);
+                return res.status(500).json({ message: "Error al actualizar la historia médica." });
+            }
+
+            res.status(200).json({
+                message: "Historia médica actualizada exitosamente.",
+                historia_medica: actualizado
+            });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'actualizarHistoriaMedica', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
+    }
+
+    /**
+     * POST /api/pat/:id/clinical-notes
+     * Crea una nota clínica para un paciente del doctor autenticado.
+     * Opcionalmente asociada a una cita.
+     */
+    public async crearNotaClinica(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) {
+                return res.status(401).json({ message: "No autorizado" });
+            }
+
+            const { id } = req.params;
+            if (!id) {
+                return res.status(400).json({ message: "ID de paciente requerido." });
+            }
+            const idString = Array.isArray(id) ? id[0] : id;
+            const idPaciente = parseInt(idString!, 10);
+            if (isNaN(idPaciente)) {
+                return res.status(400).json({ message: "ID de paciente inválido." });
+            }
+
+            // Verificar que el paciente pertenezca al doctor
+            const { data: paciente, error: pacError } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+
+            if (pacError || !paciente) {
+                return res.status(404).json({ message: "Paciente no encontrado o no pertenece a este doctor." });
+            }
+
+            const {
+                id_cita,
+                subjetivo,
+                objetivo,
+                analisis,
+                plan,
+                notas_adicionales
+            } = req.body;
+
+            // Validar que al menos un campo de nota esté presente
+            if (!subjetivo && !objetivo && !analisis && !plan && !notas_adicionales) {
+                return res.status(400).json({ message: "Debe incluir al menos un campo de la nota clínica (subjetivo, objetivo, analisis, plan, notas_adicionales)." });
+            }
+
+            // Validar id_cita si se envía
+            if (id_cita !== undefined && id_cita !== null) {
+                if (typeof id_cita !== 'number' || id_cita <= 0) {
+                    return res.status(400).json({ message: "ID de cita inválido." });
+                }
+                const { data: cita } = await supabase
+                    .schema('clinica')
+                    .from('tCita')
+                    .select('id_cita, id_paciente')
+                    .eq('id_cita', id_cita)
+                    .eq('id_doctor', doctorId)
+                    .maybeSingle();
+                if (!cita) {
+                    return res.status(404).json({ message: "Cita no encontrada o no pertenece a este doctor." });
+                }
+                if (cita.id_paciente !== idPaciente) {
+                    return res.status(400).json({ message: "La cita no corresponde al paciente indicado." });
+                }
+            }
+
+            // Validar longitud de textos (TEXT en BD, limitamos a 5000 caracteres por campo)
+            const camposTexto: { campo: string; valor: any }[] = [
+                { campo: 'subjetivo', valor: subjetivo },
+                { campo: 'objetivo', valor: objetivo },
+                { campo: 'analisis', valor: analisis },
+                { campo: 'plan', valor: plan },
+                { campo: 'notas_adicionales', valor: notas_adicionales }
+            ];
+
+            const datosInsert: any = {
+                id_paciente: idPaciente,
+                id_doctor: doctorId,
+                id_cita: id_cita || null
+            };
+            const errores: string[] = [];
+
+            for (const { campo, valor } of camposTexto) {
+                if (valor !== undefined && valor !== null && valor !== '') {
+                    if (typeof valor !== 'string') {
+                        errores.push(`El campo ${campo} debe ser un texto.`);
+                    } else if (valor.trim().length > 5000) {
+                        errores.push(`El campo ${campo} no puede exceder 5000 caracteres.`);
+                    } else {
+                        datosInsert[campo] = valor.trim();
+                    }
+                }
+            }
+
+            if (errores.length > 0) {
+                return res.status(400).json({ errors: errores });
+            }
+
+            const { data: nuevaNota, error: insertError } = await supabase
+                .schema('clinica')
+                .from('tNotaClinica')
+                .insert(datosInsert)
+                .select('*')
+                .single();
+
+            if (insertError) {
+                await logError(req, insertError, 'PatientController', 'crearNotaClinica', 'clinica', 'lDoctor', doctorId);
+                return res.status(500).json({ message: "Error al crear la nota clínica." });
+            }
+
+            res.status(201).json({
+                message: "Nota clínica creada exitosamente.",
+                nota_clinica: nuevaNota
+            });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'crearNotaClinica', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
+    }
+
+    /**
+     * GET /api/pat/:id/clinical-notes
+     * Lista las notas clínicas de un paciente del doctor autenticado.
+     * Query opcional: ?cita=:id_cita para filtrar por cita.
+     */
+    public async listarNotasClinicas(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) {
+                return res.status(401).json({ message: "No autorizado" });
+            }
+
+            const { id } = req.params;
+            if (!id) {
+                return res.status(400).json({ message: "ID de paciente requerido." });
+            }
+            const idString = Array.isArray(id) ? id[0] : id;
+            const idPaciente = parseInt(idString!, 10);
+            if (isNaN(idPaciente)) {
+                return res.status(400).json({ message: "ID de paciente inválido." });
+            }
+
+            // Verificar pertenencia del paciente
+            const { data: paciente } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+            if (!paciente) {
+                return res.status(404).json({ message: "Paciente no encontrado o no pertenece a este doctor." });
+            }
+
+            let query = supabase
+                .schema('clinica')
+                .from('tNotaClinica')
+                .select('*')
+                .eq('id_paciente', idPaciente)
+                .order('fecha_nota', { ascending: false });
+
+            // Filtrar por cita si se especifica
+            const { cita } = req.query;
+            if (cita !== undefined) {
+                const citaStr = Array.isArray(cita) ? cita[0] : cita;
+                const idCita = parseInt(citaStr as string, 10);
+                if (isNaN(idCita)) {
+                    return res.status(400).json({ message: "El parámetro 'cita' debe ser un ID numérico." });
+                }
+                query = query.eq('id_cita', idCita);
+            }
+
+            const { data: notas, error } = await query;
+
+            if (error) {
+                await logError(req, error, 'PatientController', 'listarNotasClinicas', 'clinica', 'lDoctor', doctorId);
+                return res.status(500).json({ message: "Error al obtener notas clínicas." });
+            }
+
+            res.status(200).json({ notas_clinicas: notas });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'listarNotasClinicas', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
+    }
+
+    /**
+     * GET /api/pat/:id/clinical-notes/:noteId
+     * Obtiene una nota clínica específica.
+     */
+    public async obtenerNotaClinica(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) {
+                return res.status(401).json({ message: "No autorizado" });
+            }
+
+            const { id, noteId } = req.params;
+            const idPaciente = parseInt(id as string, 10);
+            const idNota = parseInt(noteId as string, 10);
+            if (isNaN(idPaciente) || isNaN(idNota)) {
+                return res.status(400).json({ message: "ID de paciente o nota inválido." });
+            }
+
+            // Verificar que el paciente pertenezca al doctor
+            const { data: paciente } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+            if (!paciente) {
+                return res.status(404).json({ message: "Paciente no encontrado o no pertenece a este doctor." });
+            }
+
+            const { data: nota, error } = await supabase
+                .schema('clinica')
+                .from('tNotaClinica')
+                .select('*')
+                .eq('id_nota', idNota)
+                .eq('id_paciente', idPaciente)
+                .maybeSingle();
+
+            if (error || !nota) {
+                return res.status(404).json({ message: "Nota clínica no encontrada." });
+            }
+
+            res.status(200).json({ nota_clinica: nota });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'obtenerNotaClinica', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
+    }
+
+    /**
+     * PUT /api/pat/:id/clinical-notes/:noteId
+     * Actualiza una nota clínica (parcial).
+     */
+    public async actualizarNotaClinica(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) {
+                return res.status(401).json({ message: "No autorizado" });
+            }
+
+            const { id, noteId } = req.params;
+            const idPaciente = parseInt(id as string, 10);
+            const idNota = parseInt(noteId as string, 10);
+            if (isNaN(idPaciente) || isNaN(idNota)) {
+                return res.status(400).json({ message: "ID de paciente o nota inválido." });
+            }
+
+            // Verificar paciente y nota
+            const { data: paciente } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+            if (!paciente) {
+                return res.status(404).json({ message: "Paciente no encontrado o no pertenece a este doctor." });
+            }
+
+            const { data: notaExistente } = await supabase
+                .schema('clinica')
+                .from('tNotaClinica')
+                .select('id_nota')
+                .eq('id_nota', idNota)
+                .eq('id_paciente', idPaciente)
+                .maybeSingle();
+            if (!notaExistente) {
+                return res.status(404).json({ message: "Nota clínica no encontrada." });
+            }
+
+            const {
+                id_cita, subjetivo, objetivo, analisis, plan, notas_adicionales
+            } = req.body;
+
+            const datosActualizar: any = {};
+            const errores: string[] = [];
+
+            // Validar id_cita si se envía
+            if (id_cita !== undefined) {
+                if (id_cita === null) {
+                    datosActualizar.id_cita = null;
+                } else if (typeof id_cita !== 'number' || id_cita <= 0) {
+                    errores.push("ID de cita inválido.");
+                } else {
+                    const { data: cita } = await supabase
+                        .schema('clinica')
+                        .from('tCita')
+                        .select('id_cita, id_paciente')
+                        .eq('id_cita', id_cita)
+                        .eq('id_doctor', doctorId)
+                        .maybeSingle();
+                    if (!cita) errores.push("Cita no encontrada o no pertenece a este doctor.");
+                    else if (cita.id_paciente !== idPaciente) errores.push("La cita no corresponde al paciente indicado.");
+                    else datosActualizar.id_cita = id_cita;
+                }
+            }
+
+            // Textos libres, máx 5000 caracteres
+            const camposTexto = [
+                { campo: 'subjetivo', valor: subjetivo },
+                { campo: 'objetivo', valor: objetivo },
+                { campo: 'analisis', valor: analisis },
+                { campo: 'plan', valor: plan },
+                { campo: 'notas_adicionales', valor: notas_adicionales }
+            ];
+            for (const { campo, valor } of camposTexto) {
+                if (valor !== undefined) {
+                    if (valor === null || valor === '') {
+                        datosActualizar[campo] = null;
+                    } else if (typeof valor === 'string') {
+                        if (valor.trim().length > 5000) errores.push(`El campo ${campo} no puede exceder 5000 caracteres.`);
+                        else datosActualizar[campo] = valor.trim();
+                    } else {
+                        errores.push(`El campo ${campo} debe ser un texto.`);
+                    }
+                }
+            }
+
+            if (errores.length > 0) return res.status(400).json({ errors: errores });
+            if (Object.keys(datosActualizar).length === 0) return res.status(400).json({ message: "No se enviaron campos para actualizar." });
+
+            datosActualizar.updated_at = new Date();
+
+            const { data: actualizada, error: updateError } = await supabase
+                .schema('clinica')
+                .from('tNotaClinica')
+                .update(datosActualizar)
+                .eq('id_nota', idNota)
+                .select('*')
+                .single();
+
+            if (updateError) {
+                await logError(req, updateError, 'PatientController', 'actualizarNotaClinica', 'clinica', 'lDoctor', doctorId);
+                return res.status(500).json({ message: "Error al actualizar la nota clínica." });
+            }
+
+            res.status(200).json({ message: "Nota clínica actualizada exitosamente.", nota_clinica: actualizada });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'actualizarNotaClinica', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
+    }
+
+    /**
+     * DELETE /api/pat/:id/clinical-notes/:noteId
+     * Elimina permanentemente una nota clínica.
+     */
+    public async eliminarNotaClinica(req: Request, res: Response) {
+        try {
+            const doctorId = (req as any).user?.id_usuario;
+            if (!doctorId) return res.status(401).json({ message: "No autorizado" });
+
+            const { id, noteId } = req.params;
+            const idPaciente = parseInt(id as string, 10);
+            const idNota = parseInt(noteId as string, 10);
+            if (isNaN(idPaciente) || isNaN(idNota)) return res.status(400).json({ message: "ID inválido." });
+
+            const { data: paciente } = await supabase
+                .schema('clinica')
+                .from('tPaciente')
+                .select('id_paciente')
+                .eq('id_paciente', idPaciente)
+                .eq('id_doctor', doctorId)
+                .maybeSingle();
+            if (!paciente) return res.status(404).json({ message: "Paciente no encontrado." });
+
+            const { data: nota } = await supabase
+                .schema('clinica')
+                .from('tNotaClinica')
+                .select('id_nota')
+                .eq('id_nota', idNota)
+                .eq('id_paciente', idPaciente)
+                .maybeSingle();
+            if (!nota) return res.status(404).json({ message: "Nota clínica no encontrada." });
+
+            const { error } = await supabase
+                .schema('clinica')
+                .from('tNotaClinica')
+                .delete()
+                .eq('id_nota', idNota);
+
+            if (error) {
+                await logError(req, error, 'PatientController', 'eliminarNotaClinica', 'clinica', 'lDoctor', doctorId);
+                return res.status(500).json({ message: "Error al eliminar la nota clínica." });
+            }
+
+            res.status(200).json({ message: "Nota clínica eliminada correctamente." });
+
+        } catch (err: any) {
+            await logError(req, err, 'PatientController', 'eliminarNotaClinica', 'clinica', 'lDoctor');
+            res.status(500).json({ message: "Error interno del servidor." });
+        }
     }
 
 }
