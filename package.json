@@ -30,7 +30,7 @@
     "jwt-decode": "^4.0.0",
     "morgan": "^1.10.1",
     "multer": "^2.1.1",
-    "nodemailer": "^8.0.5",
+    "nodemailer": "^9.0.1",
     "promise-mysql": "^5.2.0",
     "stripe": "^22.1.0"
   },
